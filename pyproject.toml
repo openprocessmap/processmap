@@ -1,0 +1,20 @@
+[tool.poetry]
+name = "processmap"
+version = "0.1.0"
+description = "A Python library to represent process and task networks, specifically geared towards simulation of logistic processes"
+authors = ["Maarten Oosten <oosten at gmail.com>"]
+license = "MIT"
+
+[tool.poetry.dependencies]
+python = "^3.10"
+
+[tool.poetry.dev-dependencies]
+pytest = "^7.1.2"
+black = "^22.3.0"
+mypy = "^0.950"
+flake8 = "^4.0.1"
+isort = "^5.10.1"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
