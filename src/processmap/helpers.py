@@ -8,3 +8,7 @@ def either(x: T | None, b: T) -> T:
         return x
     else:
         return b
+
+
+def fset(*args: T) -> frozenset[T]:
+    return frozenset(args)

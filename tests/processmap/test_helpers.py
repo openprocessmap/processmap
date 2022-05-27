@@ -1,4 +1,4 @@
-from processmap.either import either
+from processmap.helpers import either, fset
 
 
 def test_either() -> None:
@@ -11,3 +11,7 @@ def test_either_with_none() -> None:
 
 def test_either_with_zero() -> None:
     assert either(0, 2) == 0
+
+
+def test_fset() -> None:
+    assert fset(1, 2, 3) == frozenset([1, 2, 3])

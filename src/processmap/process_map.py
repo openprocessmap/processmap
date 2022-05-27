@@ -1,38 +1,19 @@
-from __future__ import annotations
-
-from collections.abc import Set
+from abc import ABC, abstractmethod
+from collections.abc import Sequence
 from dataclasses import dataclass
 
-from processmap.either import either
+from processmap.helpers import either, fset
+from processmap.process_graph import Edge, Node, ProcessGraph
+
+
+class ProcessMap(ABC):
+    @abstractmethod
+    def to_dag(self) -> ProcessGraph:
+        ...
 
 
 @dataclass(frozen=True)
-class Edge:
-    name: str
-    min_duration: int
-    max_duration: int
-
-
-@dataclass(frozen=True)
-class Node:
-    # resources_to_request
-    # resources_to_release
-    predecessors: Set[tuple[Edge, Node]]
-
-
-@dataclass(frozen=True)
-class ProcessGraph:
-    """
-    A connected directed acyclic graph meeting two criteria:
-    - There is only one initial node (the source) (a node without incoming edges)
-    - There is only one final node (the sink) (a node without outgoing edges)
-    """
-
-    end: Node
-
-
-@dataclass(frozen=True)
-class Process:
+class Process(ProcessMap):
     name: str
     min_duration: int
     max_duration: int
@@ -40,17 +21,15 @@ class Process:
     def to_dag(self) -> ProcessGraph:
         start = Node(predecessors=frozenset())
         end = Node(
-            predecessors=frozenset(
-                [
-                    (
-                        Edge(
-                            name=self.name,
-                            min_duration=self.min_duration,
-                            max_duration=self.max_duration,
-                        ),
-                        start,
-                    )
-                ]
+            predecessors=fset(
+                (
+                    Edge(
+                        name=self.name,
+                        min_duration=self.min_duration,
+                        max_duration=self.max_duration,
+                    ),
+                    start,
+                )
             )
         )
         return ProcessGraph(end=end)
@@ -58,3 +37,15 @@ class Process:
 
 def process(name: str, min_duration: int, max_duration: int | None = None) -> Process:
     return Process(name, min_duration, either(max_duration, min_duration))
+
+
+@dataclass(frozen=True)
+class SerialProcessMap(ProcessMap):
+    processes: Sequence[ProcessMap]
+
+    def to_dag(self) -> ProcessGraph:
+        last_node = Node(predecessors=frozenset())
+        for graph in map(lambda x: x.to_dag(), self.processes):
+            z   graph.get_start()
+            last_node = Node(predecessors=fset((edge, last_node)))
+        return ProcessGraph(end=last_node)
