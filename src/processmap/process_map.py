@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
-from collections.abc import Sequence
-from dataclasses import dataclass
+from collections.abc import Sequence, Set
+from dataclasses import dataclass, replace
 
 from processmap.helpers import either, fset
 from processmap.process_graph import Edge, Node, ProcessGraph
@@ -19,20 +19,9 @@ class Process(ProcessMap):
     max_duration: int
 
     def to_dag(self) -> ProcessGraph:
-        start = Node(predecessors=frozenset())
-        end = Node(
-            predecessors=fset(
-                (
-                    Edge(
-                        name=self.name,
-                        min_duration=self.min_duration,
-                        max_duration=self.max_duration,
-                    ),
-                    start,
-                )
-            )
+        return ProcessGraph(
+            fset(Edge(Node(), Node(), self.name, self.min_duration, self.max_duration))
         )
-        return ProcessGraph(end=end)
 
 
 def process(name: str, min_duration: int, max_duration: int | None = None) -> Process:
@@ -44,8 +33,17 @@ class SerialProcessMap(ProcessMap):
     processes: Sequence[ProcessMap]
 
     def to_dag(self) -> ProcessGraph:
-        last_node = Node(predecessors=frozenset())
-        for graph in map(lambda x: x.to_dag(), self.processes):
-            z   graph.get_start()
-            last_node = Node(predecessors=fset((edge, last_node)))
-        return ProcessGraph(end=last_node)
+        graphs = map(lambda x: x.to_dag(), self.processes)
+        edges: Set[Edge] = set()
+        last_node: Node | None = None
+        for graph in graphs:
+            if last_node:
+                edges |= {
+                    replace(edge, start=last_node)
+                    for edge in graph.edges
+                    if edge.start == graph.start
+                } | {edge for edge in graph.edges if edge.start != graph.start}
+            else:
+                edges = graph.edges
+            last_node = graph.end
+        return ProcessGraph(frozenset(edges))

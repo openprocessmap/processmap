@@ -12,31 +12,31 @@ def test_process_default() -> None:
 
 
 def test_process_to_dag() -> None:
-    assert process("test", 1, 2).to_dag() == ProcessGraph(
-        end=Node(
-            predecessors=fset(
-                (
-                    Edge(name="test", min_duration=1, max_duration=2),
-                    Node(predecessors=frozenset()),
-                )
-            )
-        )
-    )
+    result = process("test", 1, 2).to_dag()
+    expected = ProcessGraph(edges=fset(Edge(Node(), Node(), "test", 1, 2)))
+
+    assert result == expected
 
 
-def test_serial_process_to_dag_from_processes() -> None:
+def test_serial_process_to_dag() -> None:
     a = process("A", 1, 2)
     b = process("B", 3, 4)
     c = SerialProcessMap([a, b])
     d = process("D", 5, 6)
     s = SerialProcessMap([c, d])
 
-    a1 = Node(predecessors=frozenset())
-    a2 = Node(predecessors=fset((Edge("A", 1, 2), a1)))
-    b2 = Node(predecessors=fset((Edge("B", 3, 4), a2)))
-    d2 = Node(predecessors=fset((Edge("D", 5, 6), b2)))
+    a1 = Node()
+    a2 = Node()
+    b2 = Node()
+    d2 = Node()
 
-    expected = ProcessGraph(end=d2)
+    expected = ProcessGraph(
+        fset(
+            Edge(a1, a2, "A", 1, 2),
+            Edge(a2, b2, "B", 3, 4),
+            Edge(b2, d2, "D", 5, 6),
+        )
+    )
     result = s.to_dag()
 
     assert result == expected
