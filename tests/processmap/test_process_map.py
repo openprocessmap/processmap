@@ -69,17 +69,18 @@ def test_serial_process_to_process_graph() -> None:
     a = process("A", 1, 2)
     b = process("B", 3, 4)
     c = SerialProcessMap([a, b])
-    d = process("D", 5, 6)
-    s = SerialProcessMap([c, d])
+    d = SerialProcessMap([])
+    e = process("E", 5, 6)
+    s = SerialProcessMap([c, d, e])
 
     expected = ProcessGraph(
         edges={
             (0, 1): EdgeInfo("A", 1, 2),
             (1, 2): EdgeInfo("B", 3, 4),
-            (2, 3): EdgeInfo("D", 5, 6),
+            (2, 3): EdgeInfo("E", 5, 6),
         },
         first=0,
-        last=1,
+        last=3,
     )
     result = s.to_graph()
 

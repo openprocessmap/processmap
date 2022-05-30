@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from functools import reduce
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from itertools import count
@@ -9,11 +10,12 @@ from processmap.process_graph import EdgeInfo, NodeId, ProcessGraph
 
 class ProcessMap(ABC):
     @abstractmethod
-    def to_subgraph(self, counter: Callable[[], NodeId]) -> ProcessGraph:
+    def to_subgraph(self, counter: Callable[[], NodeId], start: NodeId) -> ProcessGraph:
         ...
 
     def to_graph(self) -> ProcessGraph:
-        return self.to_subgraph(count().__next__)
+        counter = count().__next__
+        return self.to_subgraph(counter, counter())
 
 
 @dataclass(frozen=True)
@@ -22,8 +24,7 @@ class Process(ProcessMap):
     min_duration: int
     max_duration: int
 
-    def to_subgraph(self, counter: Callable[[], NodeId]) -> ProcessGraph:
-        start = counter()
+    def to_subgraph(self, counter: Callable[[], NodeId], start: NodeId) -> ProcessGraph:
         end = counter()
 
         return ProcessGraph(
@@ -39,33 +40,21 @@ def process(name: str, min_duration: int, max_duration: int | None = None) -> Pr
     return Process(name, min_duration, either(max_duration, min_duration))
 
 
-def _replace_node(
-    edges: Mapping[tuple[int, int], EdgeInfo], old_node: int, new_node: int
-) -> Mapping[tuple[int, int], EdgeInfo]:
-    return {
-        (new_node if u == old_node else u, new_node if v == old_node else v): edge_info
-        for (u, v), edge_info in edges.items()
-    }
-
-
 @dataclass(frozen=True)
 class SerialProcessMap(ProcessMap):
     processes: Sequence[ProcessMap]
 
-    def to_subgraph(self, counter: Callable[[], NodeId]) -> ProcessGraph:
-        if len(self.processes) < 1:
-            # no graphs
-            return ProcessGraph(edges={}, first=0, last=0)
-
-        graphs = list(map(lambda x: x.to_subgraph(counter), self.processes))
-
-        # first graph
-        edges = dict(graphs[0].edges)
-        first = graphs[0].first
-        last = graphs[0].last
-
-        # other graphs
-        for graph in graphs[1:]:
-            edges |= _replace_node(graph.edges, graph.first, last)
-            last = graph.last
-        return ProcessGraph(edges, first, last)
+    def to_subgraph(self, counter: Callable[[], NodeId], start: NodeId) -> ProcessGraph:
+        last = start
+        graphs = []
+        for p in self.processes:
+            subgraph = p.to_subgraph(counter, last)
+            graphs.append(subgraph)
+            last = subgraph.last
+        return ProcessGraph(
+            reduce(
+                dict.__or__, (g.edges for g in graphs), {}  # type: ignore[arg-type]
+            ),
+            start,
+            last,
+        )

@@ -2,7 +2,7 @@ from collections.abc import Mapping
 
 from networkx import DiGraph, is_isomorphic  # type: ignore
 
-from processmap.process_graph import ProcessGraph
+from processmap.process_graph import ProcessGraph, NodeId
 
 
 def _make_digraph(process_graph: ProcessGraph) -> DiGraph:
@@ -17,4 +17,17 @@ def _make_digraph(process_graph: ProcessGraph) -> DiGraph:
 def process_graphs_isomorphic(a: ProcessGraph, b: ProcessGraph) -> bool:
     x = _make_digraph(a)
     y = _make_digraph(b)
-    return bool(is_isomorphic(x, y, edge_match=Mapping.__eq__))
+    return (
+        bool(is_isomorphic(x, y, edge_match=Mapping.__eq__))
+        and _bounds(a) == (a.first, a.last)
+        and _bounds(b) == (b.first, b.last)
+    )
+
+
+def _bounds(x: ProcessGraph) -> tuple[NodeId, NodeId]:
+    if len(x.edges) == 0:
+        return (x.first, x.first)
+    # we can assume only one end/start exists
+    [start] = {u for u, _ in x.edges} - {v for _, v in x.edges}
+    [end] = {v for _, v in x.edges} - {u for u, _ in x.edges}
+    return start, end
