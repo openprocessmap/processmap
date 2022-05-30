@@ -1,14 +1,15 @@
 from abc import ABC, abstractmethod
-from collections.abc import Sequence, Set
-from dataclasses import dataclass, replace
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
+from itertools import chain
 
-from processmap.helpers import either, fset
-from processmap.process_graph import Edge, Node, ProcessGraph
+from processmap.helpers import either
+from processmap.process_graph import EdgeInfo, ProcessGraph
 
 
 class ProcessMap(ABC):
     @abstractmethod
-    def to_dag(self) -> ProcessGraph:
+    def to_graph(self) -> ProcessGraph:
         ...
 
 
@@ -18,9 +19,16 @@ class Process(ProcessMap):
     min_duration: int
     max_duration: int
 
-    def to_dag(self) -> ProcessGraph:
+    def to_graph(self) -> ProcessGraph:
+        start = 0
+        end = 1
+
         return ProcessGraph(
-            fset(Edge(Node(), Node(), self.name, self.min_duration, self.max_duration))
+            edges={
+                (start, end): EdgeInfo(self.name, self.min_duration, self.max_duration)
+            },
+            first=0,
+            last=1,
         )
 
 
@@ -28,22 +36,50 @@ def process(name: str, min_duration: int, max_duration: int | None = None) -> Pr
     return Process(name, min_duration, either(max_duration, min_duration))
 
 
+def _offset_graph(process_graph: ProcessGraph, offset: int) -> ProcessGraph:
+    return ProcessGraph(
+        edges={
+            (u + offset, v + offset): edge_info
+            for (u, v), edge_info in process_graph.edges.items()
+        },
+        first=process_graph.first + offset,
+        last=process_graph.last + offset,
+    )
+
+
+def _replace_node(
+    edges: Mapping[tuple[int, int], EdgeInfo], old_node: int, new_node: int
+) -> Mapping[tuple[int, int], EdgeInfo]:
+    return {
+        (new_node if u == old_node else u, new_node if v == old_node else v): edge_info
+        for (u, v), edge_info in edges.items()
+    }
+
+
 @dataclass(frozen=True)
 class SerialProcessMap(ProcessMap):
     processes: Sequence[ProcessMap]
 
-    def to_dag(self) -> ProcessGraph:
-        graphs = map(lambda x: x.to_dag(), self.processes)
-        edges: Set[Edge] = set()
-        last_node: Node | None = None
-        for graph in graphs:
-            if last_node:
-                edges |= {
-                    replace(edge, start=last_node)
-                    for edge in graph.edges
-                    if edge.start == graph.start
-                } | {edge for edge in graph.edges if edge.start != graph.start}
-            else:
-                edges = graph.edges
-            last_node = graph.end
-        return ProcessGraph(frozenset(edges))
+    def to_graph(self) -> ProcessGraph:
+        if len(self.processes) < 1:
+            # no graphs
+            return ProcessGraph(edges={}, first=0, last=0)
+
+        graphs = list(map(lambda x: x.to_graph(), self.processes))
+
+        # first graph
+        edges = dict(graphs[0].edges)
+        first = graphs[0].first
+        last = graphs[0].last
+
+        # other graphs
+        for graph in graphs[1:]:
+            offset = (
+                max(chain.from_iterable(edges.keys()))
+                - min(chain.from_iterable(graph.edges.keys()))
+                + 1
+            )
+            offset_graph = _offset_graph(graph, offset)
+            edges |= _replace_node(offset_graph.edges, offset_graph.first, last)
+            last = offset_graph.last
+        return ProcessGraph(edges, first, last)
