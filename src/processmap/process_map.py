@@ -1,16 +1,19 @@
 from abc import ABC, abstractmethod
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
-from itertools import chain
+from itertools import count
 
 from processmap.helpers import either
-from processmap.process_graph import EdgeInfo, ProcessGraph
+from processmap.process_graph import EdgeInfo, NodeId, ProcessGraph
 
 
 class ProcessMap(ABC):
     @abstractmethod
-    def to_graph(self) -> ProcessGraph:
+    def to_subgraph(self, counter: Callable[[], NodeId]) -> ProcessGraph:
         ...
+
+    def to_graph(self) -> ProcessGraph:
+        return self.to_subgraph(count().__next__)
 
 
 @dataclass(frozen=True)
@@ -19,16 +22,16 @@ class Process(ProcessMap):
     min_duration: int
     max_duration: int
 
-    def to_graph(self) -> ProcessGraph:
-        start = 0
-        end = 1
+    def to_subgraph(self, counter: Callable[[], NodeId]) -> ProcessGraph:
+        start = counter()
+        end = counter()
 
         return ProcessGraph(
             edges={
                 (start, end): EdgeInfo(self.name, self.min_duration, self.max_duration)
             },
-            first=0,
-            last=1,
+            first=start,
+            last=end,
         )
 
 
@@ -60,12 +63,12 @@ def _replace_node(
 class SerialProcessMap(ProcessMap):
     processes: Sequence[ProcessMap]
 
-    def to_graph(self) -> ProcessGraph:
+    def to_subgraph(self, counter: Callable[[], NodeId]) -> ProcessGraph:
         if len(self.processes) < 1:
             # no graphs
             return ProcessGraph(edges={}, first=0, last=0)
 
-        graphs = list(map(lambda x: x.to_graph(), self.processes))
+        graphs = list(map(lambda x: x.to_subgraph(counter), self.processes))
 
         # first graph
         edges = dict(graphs[0].edges)
@@ -74,12 +77,6 @@ class SerialProcessMap(ProcessMap):
 
         # other graphs
         for graph in graphs[1:]:
-            offset = (
-                max(chain.from_iterable(edges.keys()))
-                - min(chain.from_iterable(graph.edges.keys()))
-                + 1
-            )
-            offset_graph = _offset_graph(graph, offset)
-            edges |= _replace_node(offset_graph.edges, offset_graph.first, last)
-            last = offset_graph.last
+            edges |= _replace_node(graph.edges, graph.first, last)
+            last = graph.last
         return ProcessGraph(edges, first, last)
