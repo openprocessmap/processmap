@@ -39,17 +39,6 @@ def process(name: str, min_duration: int, max_duration: int | None = None) -> Pr
     return Process(name, min_duration, either(max_duration, min_duration))
 
 
-def _offset_graph(process_graph: ProcessGraph, offset: int) -> ProcessGraph:
-    return ProcessGraph(
-        edges={
-            (u + offset, v + offset): edge_info
-            for (u, v), edge_info in process_graph.edges.items()
-        },
-        first=process_graph.first + offset,
-        last=process_graph.last + offset,
-    )
-
-
 def _replace_node(
     edges: Mapping[tuple[int, int], EdgeInfo], old_node: int, new_node: int
 ) -> Mapping[tuple[int, int], EdgeInfo]:
