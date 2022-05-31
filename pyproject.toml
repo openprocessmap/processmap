@@ -16,6 +16,10 @@ flake8 = "^4.0.1"
 isort = "^5.10.1"
 networkx = "^2.8.2"
 
+[tool.isort]
+line_length = 79
+profile = 'black'
+
 [build-system]
 requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
