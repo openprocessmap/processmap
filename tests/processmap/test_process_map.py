@@ -1,87 +1,98 @@
-from processmap.process_graph import EdgeInfo, ProcessGraph
-from processmap.process_map import Process, SerialProcessMap, process
+import pytest
+
+from processmap.helpers import fset
+from processmap.process_graph import Edge, ProcessGraph
+from processmap.process_map import (
+    ParallelProcessMap,
+    Process,
+    ProcessMap,
+    SerialProcessMap,
+)
 from tests.processmap.process_graph_equal import process_graphs_isomorphic
 
 
-def test_process() -> None:
-    assert process("test", 1, 2) == Process("test", 1, 2)
-
-
-def test_process_default() -> None:
-    assert process("test", 1) == Process("test", 1, 1)
+@pytest.fixture
+def process_map() -> ProcessMap:
+    a = Process("A", 1)
+    b = Process("B", 3)
+    c = SerialProcessMap((a, b))
+    e = Process("E", 5)
+    return SerialProcessMap((c, e))
 
 
 def test_process_to_graph() -> None:
-    p = process("test", 1, 2)
-    result = p.to_graph()
-
-    start = 100
-    end = 101
-    expected = ProcessGraph(
-        edges={(start, end): EdgeInfo("test", 1, 2)}, first=100, last=101
-    )
+    result = Process("test", 1).to_graph()
+    expected = ProcessGraph(edges=fset(Edge(100, 101, "test", 1)), start=100, end=101)
     assert process_graphs_isomorphic(result, expected)
 
 
 def test_process_to_graph_unequal() -> None:
-    p = process("test", 1, 2)
-    result = p.to_graph()
-
-    start = 100
-    end = 101
-    expected = ProcessGraph(
-        edges={(start, end): EdgeInfo("test", 1, 3)}, first=100, last=101
-    )
-
+    result = Process("test", 1).to_graph()
+    expected = ProcessGraph(edges=fset(Edge(100, 101, "test", 2)), start=100, end=101)
     assert not process_graphs_isomorphic(result, expected)
 
 
-def test_serial_process_to_process_graph_empty() -> None:
-    s = SerialProcessMap([])
-
-    expected = ProcessGraph(
-        edges={},
-        first=0,
-        last=0,
-    )
-    result = s.to_graph()
-
-    assert process_graphs_isomorphic(result, expected)
+def test_serial_process_empty_not_allowed() -> None:
+    with pytest.raises(AssertionError):
+        SerialProcessMap(())
 
 
 def test_serial_process_to_process_graph_1() -> None:
-    a = process("A", 1, 2)
-    s = SerialProcessMap([a])
+    a = Process("A", 1)
+    s = SerialProcessMap((a,))
 
-    expected = ProcessGraph(
-        edges={
-            (0, 1): EdgeInfo("A", 1, 2),
-        },
-        first=0,
-        last=1,
-    )
+    expected = ProcessGraph(edges=fset(Edge(0, 1, "A", 1)), start=0, end=1)
     result = s.to_graph()
-
     assert process_graphs_isomorphic(result, expected)
 
 
 def test_serial_process_to_process_graph() -> None:
-    a = process("A", 1, 2)
-    b = process("B", 3, 4)
-    c = SerialProcessMap([a, b])
-    d = SerialProcessMap([])
-    e = process("E", 5, 6)
-    s = SerialProcessMap([c, d, e])
+    a = Process("A", 1)
+    b = Process("B", 3)
+    c = SerialProcessMap((a, b))
+    e = Process("E", 5)
+    s = SerialProcessMap((c, e))
 
     expected = ProcessGraph(
-        edges={
-            (0, 1): EdgeInfo("A", 1, 2),
-            (1, 2): EdgeInfo("B", 3, 4),
-            (2, 3): EdgeInfo("E", 5, 6),
-        },
-        first=0,
-        last=3,
+        edges=fset(
+            Edge(0, 1, "A", 1),
+            Edge(1, 2, "B", 3),
+            Edge(2, 3, "E", 5),
+        ),
+        start=0,
+        end=3,
     )
     result = s.to_graph()
 
+    assert process_graphs_isomorphic(result, expected)
+
+
+def test_parallel_process_empty_not_allowed() -> None:
+    with pytest.raises(AssertionError):
+        ParallelProcessMap(frozenset())
+
+
+def test_parallel_process_to_process_graph_single(process_map: ProcessMap) -> None:
+    assert process_graphs_isomorphic(
+        ParallelProcessMap(fset(process_map)).to_graph(), process_map.to_graph()
+    )
+
+
+def test_parallel_process_to_process_graph_nested() -> None:
+    a = Process("A", 1)
+    b = Process("B", 3)
+    c = ParallelProcessMap(fset(a, b))
+    e = Process("E", 5)
+    s = ParallelProcessMap(fset(c, e))
+
+    expected = ProcessGraph(
+        edges=fset(
+            Edge(0, 1, "A", 1),
+            Edge(0, 1, "B", 3),
+            Edge(0, 1, "E", 5),
+        ),
+        start=0,
+        end=1,
+    )
+    result = s.to_graph()
     assert process_graphs_isomorphic(result, expected)

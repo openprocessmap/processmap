@@ -1,11 +1,12 @@
 from abc import ABC, abstractmethod
-from functools import reduce
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable
 from dataclasses import dataclass
+from functools import reduce
 from itertools import count
 
-from processmap.helpers import either
-from processmap.process_graph import EdgeInfo, NodeId, ProcessGraph
+from processmap.process_graph import Edge, NodeId, ProcessGraph
+
+from .helpers import fset  # TODO: one style of imports
 
 
 class ProcessMap(ABC):
@@ -21,28 +22,24 @@ class ProcessMap(ABC):
 @dataclass(frozen=True)
 class Process(ProcessMap):
     name: str
-    min_duration: int
-    max_duration: int
+    duration: int
 
     def to_subgraph(self, counter: Callable[[], NodeId], start: NodeId) -> ProcessGraph:
         end = counter()
 
         return ProcessGraph(
-            edges={
-                (start, end): EdgeInfo(self.name, self.min_duration, self.max_duration)
-            },
-            first=start,
-            last=end,
+            edges=fset(Edge(start, end, self.name, self.duration)),
+            start=start,
+            end=end,
         )
-
-
-def process(name: str, min_duration: int, max_duration: int | None = None) -> Process:
-    return Process(name, min_duration, either(max_duration, min_duration))
 
 
 @dataclass(frozen=True)
 class SerialProcessMap(ProcessMap):
-    processes: Sequence[ProcessMap]
+    processes: tuple[ProcessMap, ...]
+
+    def __post_init__(self) -> None:
+        assert len(self.processes) > 0
 
     def to_subgraph(self, counter: Callable[[], NodeId], start: NodeId) -> ProcessGraph:
         last = start
@@ -50,11 +47,24 @@ class SerialProcessMap(ProcessMap):
         for p in self.processes:
             subgraph = p.to_subgraph(counter, last)
             graphs.append(subgraph)
-            last = subgraph.last
+            last = subgraph.end
         return ProcessGraph(
             reduce(
-                dict.__or__, (g.edges for g in graphs), {}  # type: ignore[arg-type]
+                frozenset.__or__,
+                (g.edges for g in graphs),
+                frozenset(),
             ),
             start,
             last,
         )
+
+
+@dataclass(frozen=True)
+class ParallelProcessMap(ProcessMap):
+    processes: frozenset[ProcessMap]  # non-empty
+
+    def __post_init__(self) -> None:
+        assert len(self.processes) > 0
+
+    def to_subgraph(self, counter: Callable[[], NodeId], start: NodeId) -> ProcessGraph:
+        return list(self.processes)[0].to_graph()

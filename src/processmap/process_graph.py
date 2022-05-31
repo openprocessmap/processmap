@@ -1,14 +1,14 @@
-from collections.abc import Mapping
 from dataclasses import dataclass
 
 NodeId = int
 
 
 @dataclass(frozen=True)
-class EdgeInfo:
+class Edge:
+    start: NodeId
+    end: NodeId
     name: str
-    min_duration: int
-    max_duration: int
+    duration: int
 
 
 @dataclass(frozen=True)
@@ -19,6 +19,6 @@ class ProcessGraph:
     - There is only one final node (the sink) (a node without outgoing edges)
     """
 
-    edges: Mapping[tuple[NodeId, NodeId], EdgeInfo]
-    first: int
-    last: int
+    edges: frozenset[Edge]
+    start: NodeId
+    end: NodeId

@@ -1,33 +1,33 @@
 from collections.abc import Mapping
 
-from networkx import DiGraph, is_isomorphic  # type: ignore
+from networkx import MultiDiGraph, is_isomorphic  # type: ignore
 
-from processmap.process_graph import ProcessGraph, NodeId
+from processmap.process_graph import NodeId, ProcessGraph
 
 
-def _make_digraph(process_graph: ProcessGraph) -> DiGraph:
-    di_graph = DiGraph()
+def _as_networkx(process_graph: ProcessGraph) -> MultiDiGraph:
+    di_graph = MultiDiGraph()
     di_graph.add_edges_from(
-        (u, v, {"edge_info": edge_info})
-        for (u, v), edge_info in process_graph.edges.items()
+        (edge.start, edge.end, {"name": edge.name, "duration": edge.duration})
+        for edge in process_graph.edges
     )
     return di_graph
 
 
 def process_graphs_isomorphic(a: ProcessGraph, b: ProcessGraph) -> bool:
-    x = _make_digraph(a)
-    y = _make_digraph(b)
+    x = _as_networkx(a)
+    y = _as_networkx(b)
     return (
         bool(is_isomorphic(x, y, edge_match=Mapping.__eq__))
-        and _bounds(a) == (a.first, a.last)
-        and _bounds(b) == (b.first, b.last)
+        and _bounds(a) == (a.start, a.end)
+        and _bounds(b) == (b.start, b.end)
     )
 
 
 def _bounds(x: ProcessGraph) -> tuple[NodeId, NodeId]:
-    if len(x.edges) == 0:
-        return (x.first, x.first)
-    # we can assume only one end/start exists
-    [start] = {u for u, _ in x.edges} - {v for _, v in x.edges}
-    [end] = {v for _, v in x.edges} - {u for u, _ in x.edges}
+    if len(x.edges) == 0:  # TODO: remove?
+        return (x.start, x.start)
+    # We can assume only one end/start exists in a process graph
+    [start] = {e.start for e in x.edges} - {e.end for e in x.edges}
+    [end] = {e.end for e in x.edges} - {e.start for e in x.edges}
     return start, end
