@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -20,6 +22,12 @@ class ProcessMap(ABC):
         counter = count().__next__
         return self.to_subgraph(counter, counter(), counter())
 
+    def __add__(self, other: ProcessMap) -> Series:
+        return Series((self, other))
+
+    def __or__(self, other: ProcessMap) -> Parallel:
+        return Parallel((space() + self + space(), space() + other + space()))
+
 
 @dataclass(frozen=True)
 class Process(ProcessMap):
@@ -37,7 +45,7 @@ class Process(ProcessMap):
 
 
 @dataclass(frozen=True)
-class SerialProcessMap(ProcessMap):
+class Series(ProcessMap):
     processes: tuple[ProcessMap, ...]
 
     def __post_init__(self) -> None:
@@ -47,26 +55,21 @@ class SerialProcessMap(ProcessMap):
         self, counter: Callable[[], NodeId], start: NodeId, end: NodeId
     ) -> ProcessGraph:
         last = start
-        graphs = []
+        edges: set[Edge] = set()
         for p in self.processes[:-1]:
             subgraph = p.to_subgraph(counter, last, counter())
-            graphs.append(subgraph)
+            edges |= subgraph.edges
             last = subgraph.end
-        graphs.append(self.processes[-1].to_subgraph(counter, last, end))
-        return ProcessGraph(
-            reduce(
-                frozenset.__or__,
-                (g.edges for g in graphs),
-                frozenset(),
-            ),
-            start,
-            end,
-        )
+        edges |= self.processes[-1].to_subgraph(counter, last, end).edges
+        return ProcessGraph(frozenset(edges), start, end)
+
+    def __add__(self, other: ProcessMap) -> Series:
+        return Series((*self.processes, other))
 
 
 @dataclass(frozen=True)
-class ParallelProcessMap(ProcessMap):
-    processes: frozenset[ProcessMap]  # non-empty
+class Parallel(ProcessMap):
+    processes: tuple[ProcessMap, ...]  # non-empty
 
     def __post_init__(self) -> None:
         assert len(self.processes) > 0
@@ -76,3 +79,18 @@ class ParallelProcessMap(ProcessMap):
     ) -> ProcessGraph:
         edges = [p.to_subgraph(counter, start, end).edges for p in self.processes]
         return ProcessGraph(reduce(frozenset.union, edges), start, end)
+
+    def __or__(self, other: ProcessMap) -> Parallel:
+        return Parallel((*self.processes, space() + other + space()))
+
+
+def chain(*args: ProcessMap) -> Series:
+    return Series(args)
+
+
+def simultaneous(*args: ProcessMap) -> Parallel:
+    return Parallel(tuple(chain(space(), arg, space()) for arg in args))
+
+
+def space() -> Process:
+    return Process("space", 0)
