@@ -78,16 +78,16 @@ class TestUnion:
         with pytest.raises(AssertionError):
             Union(())
 
-    def test_to_graph_single(self, process_map: ProcessMap) -> None:
+    def test_one(self, process_map: ProcessMap) -> None:
         assert isomorphic(Union((process_map,)).to_graph(), process_map.to_graph())
 
     def test_to_graph_nested(self) -> None:
-        a = P("A", 1)
-        b = P("B", 3)
-        c = Union((a, b))
-        e = P("E", 5)
-        s = Union((c, e))
-
+        s = Union(
+            (
+                Union((P("A", 1), P("B", 3))),
+                P("E", 5),
+            )
+        )
         expected = Graph(
             edges=fset(
                 Edge(0, 1, "A", 1),
@@ -97,8 +97,7 @@ class TestUnion:
             start=0,
             end=1,
         )
-        result = s.to_graph()
-        assert isomorphic(result, expected)
+        assert isomorphic(s.to_graph(), expected)
 
 
 #

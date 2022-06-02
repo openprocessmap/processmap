@@ -15,13 +15,13 @@ __all__ = ["ProcessMap", "Process", "Series", "Union"]
 class ProcessMap(ABC):
     @abstractmethod
     def to_subgraph(
-        self, counter: Callable[[], NodeId], start: NodeId, end: NodeId
+        self, new_id: Callable[[], NodeId], start: NodeId, end: NodeId
     ) -> Graph:
         ...
 
     def to_graph(self) -> Graph:
-        counter = count().__next__
-        return self.to_subgraph(counter, counter(), counter())
+        new_id = count().__next__
+        return self.to_subgraph(new_id, new_id(), new_id())
 
     def __add__(self, other: ProcessMap) -> Series:
         return Series((self, other))
@@ -36,7 +36,7 @@ class Process(ProcessMap):
     duration: int
 
     def to_subgraph(
-        self, counter: Callable[[], NodeId], start: NodeId, end: NodeId
+        self, new_id: Callable[[], NodeId], start: NodeId, end: NodeId
     ) -> Graph:
         return Graph(
             edges=fset(Edge(start, end, self.name, self.duration)),
@@ -53,15 +53,15 @@ class Series(ProcessMap):
         assert len(self.processes) > 0
 
     def to_subgraph(
-        self, counter: Callable[[], NodeId], start: NodeId, end: NodeId
+        self, new_id: Callable[[], NodeId], start: NodeId, end: NodeId
     ) -> Graph:
         last = start
         edges: set[Edge] = set()
         for p in self.processes[:-1]:
-            subgraph = p.to_subgraph(counter, last, counter())
+            subgraph = p.to_subgraph(new_id, last, new_id())
             edges |= subgraph.edges
             last = subgraph.end
-        edges |= self.processes[-1].to_subgraph(counter, last, end).edges
+        edges |= self.processes[-1].to_subgraph(new_id, last, end).edges
         return Graph(frozenset(edges), start, end)
 
     def __add__(self, other: ProcessMap) -> Series:
@@ -76,9 +76,9 @@ class Union(ProcessMap):
         assert len(self.processes) > 0
 
     def to_subgraph(
-        self, counter: Callable[[], NodeId], start: NodeId, end: NodeId
+        self, new_id: Callable[[], NodeId], start: NodeId, end: NodeId
     ) -> Graph:
-        edges = [p.to_subgraph(counter, start, end).edges for p in self.processes]
+        edges = [p.to_subgraph(new_id, start, end).edges for p in self.processes]
         return Graph(reduce(frozenset.union, edges), start, end)
 
     def __or__(self, other: ProcessMap) -> Union:
