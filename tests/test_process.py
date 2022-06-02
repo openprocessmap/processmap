@@ -1,9 +1,13 @@
-from processmap import Edge, Graph
+from processmap import DependencyEdge as DE
+from processmap import Graph
 from processmap import Process as P
-from processmap import Seq, Union
+from processmap import ProcessEdge as PE
+from processmap import ProcessNode, Seq, Union
 from processmap.common import fset
+from processmap.graph import RequestNode, ReleaseNode
+from processmap.process import Request
 
-from .common import isomorphic
+from .common import isomorphic_graph
 
 
 class TestProcessMap:
@@ -23,15 +27,26 @@ class TestProcessMap:
 
 
 class TestProcess:
-    def test_identity(self) -> None:
+    def test_identity_by_value(self) -> None:
         assert P("Sail", 1) == P("Sail", 1)
 
     def test_to_graph(self) -> None:
         result = P("test", 1).to_graph()
-        expected = Graph(fset(Edge(5, 6, "test", 1)), start=fset(5), end=fset(6))
-        assert isomorphic(result, expected)
-        assert not isomorphic(
-            result, Graph(fset(Edge(5, 6, "test", 2)), start=fset(5), end=fset(6))
+        expected = Graph(
+            nodes=fset(x := ProcessNode(), y := ProcessNode()),
+            edges=fset(PE(x, y, "test", 1)),
+            start=fset(x),
+            end=fset(y),
+        )
+        assert isomorphic_graph(result, expected)
+        assert not isomorphic_graph(
+            result,
+            Graph(
+                nodes=fset(x := ProcessNode(), y := ProcessNode()),
+                edges=fset(PE(x, y, "test", 2)),
+                start=fset(x),
+                end=fset(y),
+            ),
         )
 
 
@@ -39,109 +54,161 @@ class TestSeq:
     def test_nested(self) -> None:
         s = P("A", 1) >> P("B", 3) >> P("E", 5)
         expected = Graph(
-            fset(
-                Edge(0, 1, "A", 1),
-                Edge(1, 2, "<seq>", 0),
-                Edge(2, 3, "B", 3),
-                Edge(3, 4, "<seq>", 0),
-                Edge(4, 5, "E", 5),
+            nodes=fset(
+                a1 := ProcessNode(),
+                a2 := ProcessNode(),
+                b1 := ProcessNode(),
+                b2 := ProcessNode(),
+                c1 := ProcessNode(),
+                c2 := ProcessNode(),
             ),
-            start=fset(0),
-            end=fset(5),
+            edges=fset(
+                PE(a1, a2, "A", 1),
+                DE(a2, b1),
+                PE(b1, b2, "B", 3),
+                DE(b2, c1),
+                PE(c1, c2, "E", 5),
+            ),
+            start=fset(a1),
+            end=fset(c2),
         )
-        assert isomorphic(s, expected)
+        assert isomorphic_graph(s, expected)
 
 
 class TestUnion:
     def test_same_process(self) -> None:
         p = P("A", 1)
-        assert isomorphic(p | p, p)
+        assert isomorphic_graph(p | p, p)
 
     def test_different_process(self) -> None:
-        assert isomorphic(
+        assert isomorphic_graph(
             P("A", 4) | P("B", 9),
             Graph(
-                fset(
-                    Edge(0, 1, "A", 4),
-                    Edge(2, 3, "B", 9),
+                nodes=fset(
+                    a1 := ProcessNode(),
+                    a2 := ProcessNode(),
+                    b1 := ProcessNode(),
+                    b2 := ProcessNode(),
                 ),
-                start=fset(0, 2),
-                end=fset(1, 3),
+                edges=fset(
+                    PE(a1, a2, "A", 4),
+                    PE(b1, b2, "B", 9),
+                ),
+                start=fset(a1, b1),
+                end=fset(a2, b2),
             ),
         )
 
     def test_similar_process(self) -> None:
-        assert isomorphic(
+        assert isomorphic_graph(
             P("A", 1) | P("A", 1),
             Graph(
-                fset(
-                    Edge(0, 1, "A", 1),
-                    Edge(2, 3, "A", 1),
+                nodes=fset(
+                    x1 := ProcessNode(),
+                    x2 := ProcessNode(),
+                    y1 := ProcessNode(),
+                    y2 := ProcessNode(),
                 ),
-                start=fset(0, 2),
-                end=fset(1, 3),
+                edges=fset(
+                    PE(x1, x2, "A", 1),
+                    PE(y1, y2, "A", 1),
+                ),
+                start=fset(x1, y1),
+                end=fset(x2, y2),
             ),
         )
 
     def test_process_overlaps_seq(self) -> None:
         x = P("B", 1)
         y = P("A", 1) >> x >> P("C", 1)
-        assert isomorphic(x | y, y)
-        assert isomorphic(y | x, y)
+        assert isomorphic_graph(x | y, y)
+        assert isomorphic_graph(y | x, y)
 
     def test_process_doesnt_overlap_seq(self) -> None:
         x = P("X", 1)
         y = P("A", 1) >> P("B", 1) >> P("C", 1)
         expect = Graph(
-            fset(
-                Edge(0, 1, "A", 1),
-                Edge(1, 2, "<seq>", 0),
-                Edge(2, 3, "B", 1),
-                Edge(3, 4, "<seq>", 0),
-                Edge(4, 5, "C", 1),
-                Edge(6, 7, "X", 1),
+            nodes=fset(
+                x1 := ProcessNode(),
+                x2 := ProcessNode(),
+                a1 := ProcessNode(),
+                a2 := ProcessNode(),
+                b1 := ProcessNode(),
+                b2 := ProcessNode(),
+                c1 := ProcessNode(),
+                c2 := ProcessNode(),
             ),
-            start=fset(0, 6),
-            end=fset(5, 7),
+            edges=fset(
+                PE(a1, a2, "A", 1),
+                DE(a2, b1),
+                PE(b1, b2, "B", 1),
+                DE(b2, c1),
+                PE(c1, c2, "C", 1),
+                PE(x1, x2, "X", 1),
+            ),
+            start=fset(a1, x1),
+            end=fset(c2, x2),
         )
-        assert isomorphic(x | y, expect)
-        assert isomorphic(y | x, expect)
+        assert isomorphic_graph(x | y, expect)
+        assert isomorphic_graph(y | x, expect)
 
     def test_seqs_without_overlap(self) -> None:
         x = P("A", 1) >> P("B", 1) >> P("C", 1)
         y = P("D", 1) >> P("E", 1) >> P("F", 1)
-        assert isomorphic(
+        assert isomorphic_graph(
             x | y,
             expect := Graph(
-                fset(
-                    Edge(0, 1, "A", 1),
-                    Edge(1, 2, "<seq>", 0),
-                    Edge(2, 3, "B", 1),
-                    Edge(3, 4, "<seq>", 0),
-                    Edge(4, 5, "C", 1),
-                    Edge(10, 11, "D", 1),
-                    Edge(11, 12, "<seq>", 0),
-                    Edge(12, 13, "E", 1),
-                    Edge(13, 14, "<seq>", 0),
-                    Edge(14, 15, "F", 1),
+                nodes=fset(
+                    a1 := ProcessNode(),
+                    a2 := ProcessNode(),
+                    b1 := ProcessNode(),
+                    b2 := ProcessNode(),
+                    c1 := ProcessNode(),
+                    c2 := ProcessNode(),
+                    d1 := ProcessNode(),
+                    d2 := ProcessNode(),
+                    e1 := ProcessNode(),
+                    e2 := ProcessNode(),
+                    f1 := ProcessNode(),
+                    f2 := ProcessNode(),
                 ),
-                start=fset(0, 10),
-                end=fset(5, 15),
+                edges=fset(
+                    PE(a1, a2, "A", 1),
+                    DE(a2, b1),
+                    PE(b1, b2, "B", 1),
+                    DE(b2, c1),
+                    PE(c1, c2, "C", 1),
+                    PE(d1, d2, "D", 1),
+                    DE(d2, e1),
+                    PE(e1, e2, "E", 1),
+                    DE(e2, f1),
+                    PE(f1, f2, "F", 1),
+                ),
+                start=fset(a1, d1),
+                end=fset(c2, f2),
             ),
         )
-        assert isomorphic(y | x, expect)  # also in reverse order!
+        assert isomorphic_graph(y | x, expect)  # also in reverse order!
 
     def test_fully_disjoint_nested(self) -> None:
-        assert isomorphic(
+        assert isomorphic_graph(
             P("A", 4) | P("B", 9) | P("C", 10),
             Graph(
-                fset(
-                    Edge(0, 1, "A", 4),
-                    Edge(2, 3, "B", 9),
-                    Edge(4, 5, "C", 10),
+                nodes=fset(
+                    a1 := ProcessNode(),
+                    a2 := ProcessNode(),
+                    b1 := ProcessNode(),
+                    b2 := ProcessNode(),
+                    c1 := ProcessNode(),
+                    c2 := ProcessNode(),
                 ),
-                start=fset(0, 2, 4),
-                end=fset(1, 3, 5),
+                edges=fset(
+                    PE(a1, a2, "A", 4),
+                    PE(b1, b2, "B", 9),
+                    PE(c1, c2, "C", 10),
+                ),
+                start=fset(a1, b1, c1),
+                end=fset(a2, b2, c2),
             ),
         )
 
@@ -149,22 +216,76 @@ class TestUnion:
         x = P("A", 1) >> (b := P("B", 1)) >> P("C", 1)
         y = P("D", 1) >> b >> P("E", 1)
         expected = Graph(
-            fset(
-                Edge(0, 1, "A", 1),
-                Edge(1, 2, "<seq>", 0),
-                Edge(2, 3, "B", 1),
-                Edge(3, 4, "<seq>", 0),
-                Edge(4, 5, "C", 1),
-                Edge(10, 11, "D", 1),
-                Edge(11, 2, "<seq>", 0),
-                Edge(3, 14, "<seq>", 0),
-                Edge(14, 15, "E", 1),
+            nodes=fset(
+                a1 := ProcessNode(),
+                a2 := ProcessNode(),
+                b1 := ProcessNode(),
+                b2 := ProcessNode(),
+                c1 := ProcessNode(),
+                c2 := ProcessNode(),
+                d1 := ProcessNode(),
+                d2 := ProcessNode(),
+                e1 := ProcessNode(),
+                e2 := ProcessNode(),
             ),
-            start=fset(0, 10),
-            end=fset(5, 15),
+            edges=fset(
+                PE(a1, a2, "A", 1),
+                DE(a2, b1),
+                PE(b1, b2, "B", 1),
+                DE(b2, c1),
+                PE(c1, c2, "C", 1),
+                PE(d1, d2, "D", 1),
+                DE(d2, b1),
+                DE(b2, e1),
+                PE(e1, e2, "E", 1),
+            ),
+            start=fset(a1, d1),
+            end=fset(c2, e2),
         )
-        assert isomorphic(x | y, expected)
-        assert isomorphic(y | x, expected)
+        assert isomorphic_graph(x | y, expected)
+        assert isomorphic_graph(y | x, expected)
+
+
+class TestRequest:
+    def test_request(self) -> None:
+        ship_required = Request(ship := object())
+        expected = Graph(
+                nodes=fset(node := RequestNode(requested_resource=ship)),
+                edges=fset(),
+                start=fset(node),
+                end=fset(node),
+            )
+
+        assert isomorphic_graph(ship_required, expected)
+
+
+class TestUsing:
+    def test_using_single_process(self) -> None:
+        sail_ship_with_crew = P("Sail", 1).using(ship := object(), crew := object())
+        expected = Graph(
+            nodes=fset(
+                ship1 := RequestNode(requested_resource=ship),
+                ship2 := ReleaseNode(released_resource=ship),
+                crew1 := RequestNode(requested_resource=crew),
+                crew2 := ReleaseNode(released_resource=crew),
+                sail1 := ProcessNode(),
+                sail2 := ProcessNode(),
+            ),
+            edges=fset(
+                DE(ship1, sail1),
+                DE(crew1, sail1),
+                PE(sail1, sail2, "Sail", 1),
+                DE(sail2, crew2),
+                DE(sail2, ship2),
+            ),
+            start=fset(ship1, crew1),
+            end=fset(crew2, ship2),
+        )
+
+        result = sail_ship_with_crew.to_graph()
+
+        assert isomorphic_graph(result, expected)
+
 
 
 # def test_process_with_resource() -> None:

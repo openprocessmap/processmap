@@ -1,12 +1,19 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Callable
+from collections.abc import Sequence
 from dataclasses import dataclass
-from itertools import count, product
+from itertools import product
 
 from .common import fset
-from .graph import Edge, Graph, NodeId
+from .graph import (
+    DependencyEdge,
+    Graph,
+    ProcessEdge,
+    ProcessNode,
+    ReleaseNode,
+    RequestNode,
+)
 
 __all__ = ["ProcessMap", "Process", "Seq", "Union"]
 
@@ -16,29 +23,22 @@ ObjectId = int
 
 class ProcessMap(ABC):
     @abstractmethod
-    def to_subgraph(
-        self, new_id: Callable[[], NodeId], subgraphs: dict[ObjectId, Graph]
-    ) -> Graph:
+    def to_subgraph(self, subgraphs: dict[ObjectId, Graph]) -> Graph:
         ...
 
     def to_graph(self) -> Graph:
-        new_id = count().__next__
-        return self.to_subgraph(new_id, subgraphs={})
-
-    def __add__(self, other: ProcessMap) -> Seq:
-        # TODO: make this a chaining operator to prevent overly nesting
-        return Seq(self, other)
+        return self.to_subgraph(subgraphs={})
 
     def __rshift__(self, other: ProcessMap) -> Seq:
         # TODO: make this a chaining operator to prevent overly nesting
         return Seq(self, other)
 
     def __or__(self, other: ProcessMap) -> ProcessMap:
-        "Create a merged union of this and another process map"
+        """Create a merged union of this and another process map"""
         return Union(self, other)
 
-    # def __le__(self, other: ProcessMap) -> bool:
-    #     "Whether other is a subset or equal of this process map"
+    def using(self, *attr: object) -> ProcessMap:
+        return WithResources(self, attr)
 
 
 @dataclass(frozen=True)
@@ -46,35 +46,18 @@ class Process(ProcessMap):
     name: str
     duration: int
 
-    def to_subgraph(
-        self, new_id: Callable[[], NodeId], subgraphs: dict[ObjectId, Graph]
-    ) -> Graph:
+    def to_subgraph(self, subgraphs: dict[ObjectId, Graph]) -> Graph:
         # TODO: reconsider accessing cache here
         try:
             return subgraphs[id(self)]
         except KeyError:
             graph = subgraphs[id(self)] = Graph(
-                fset(
-                    Edge(start := new_id(), end := new_id(), self.name, self.duration)
-                ),
+                nodes=fset(start := ProcessNode(), end := ProcessNode()),
+                edges=fset(ProcessEdge(start, end, self.name, self.duration)),
                 start=fset(start),
                 end=fset(end),
             )
             return graph
-
-    # def __or__(self, other: ProcessMap) -> ProcessMap:
-    #     if isinstance(other, Seq | Process):
-    #         return other if self <= other else Union(self, other)
-    #     return NotImplemented
-
-    # def __le__(self, other: ProcessMap) -> bool:
-    #     match other:
-    #         case Process():
-    #             return self == other
-    #         case Seq(a, b):
-    #             return self <= a or self <= b
-    #         case _:
-    #             return NotImplemented
 
 
 @dataclass(frozen=True)
@@ -87,36 +70,22 @@ class Seq(ProcessMap):
     a: ProcessMap
     b: ProcessMap
 
-    def to_subgraph(
-        self, new_id: Callable[[], NodeId], subgraphs: dict[ObjectId, Graph]
-    ) -> Graph:
+    def to_subgraph(self, subgraphs: dict[ObjectId, Graph]) -> Graph:
         try:
             return subgraphs[id(self)]
         except KeyError:
-            graph_a = self.a.to_subgraph(new_id, subgraphs)
-            graph_b = self.b.to_subgraph(new_id, subgraphs)
+            graph_a = self.a.to_subgraph(subgraphs)
+            graph_b = self.b.to_subgraph(subgraphs)
             links = {
-                Edge(u, v, "<seq>", 0)  # TODO: find a solution to ugly string
-                for u, v in product(graph_a.end, graph_b.start)
+                DependencyEdge(u, v) for u, v in product(graph_a.end, graph_b.start)
             }
             graph = subgraphs[id(self)] = Graph(
-                graph_b.edges | graph_a.edges | links,
+                nodes=graph_a.nodes | graph_b.nodes,
+                edges=graph_a.edges | graph_b.edges | links,
                 start=graph_a.start,
                 end=graph_b.end,
             )
             return graph
-
-    # def __or__(self, other: ProcessMap) -> ProcessMap:
-    #     match other:
-    #         case Process():
-    #             return self if other <= self else Union(self, other)
-    #         case Seq():
-    #             # TODO: detect overlaps
-    #             return Union(self, other)
-    #     return NotImplemented
-
-    # def __le__(self, p: ProcessMap) -> bool:
-    #     return NotImplemented
 
 
 @dataclass(frozen=True)
@@ -128,16 +97,15 @@ class Union(ProcessMap):
     a: ProcessMap
     b: ProcessMap
 
-    def to_subgraph(
-        self, new_id: Callable[[], NodeId], subgraphs: dict[ObjectId, Graph]
-    ) -> Graph:
+    def to_subgraph(self, subgraphs: dict[ObjectId, Graph]) -> Graph:
         try:
             return subgraphs[id(self)]
         except KeyError:
-            graph_a = self.a.to_subgraph(new_id, subgraphs)
-            graph_b = self.b.to_subgraph(new_id, subgraphs)
+            graph_a = self.a.to_subgraph(subgraphs)
+            graph_b = self.b.to_subgraph(subgraphs)
             graph = subgraphs[id(self)] = Graph(
-                edges := graph_b.edges | graph_a.edges,
+                nodes=graph_a.nodes | graph_b.nodes,
+                edges=(edges := graph_a.edges | graph_b.edges),
                 start=(graph_a.start | graph_b.start)
                 - frozenset({edge.end for edge in edges}),
                 end=(graph_a.end | graph_b.end)
@@ -145,5 +113,79 @@ class Union(ProcessMap):
             )
             return graph
 
-    # def __or__(self, other: ProcessMap) -> ProcessMap:
-    #     raise NotImplementedError()
+
+@dataclass(frozen=True)
+class Request(ProcessMap):
+    """
+    A process that only completes once a resource has been granted
+    """
+
+    resource: object
+
+    def to_subgraph(self, subgraphs: dict[ObjectId, Graph]) -> Graph:
+        try:
+            return subgraphs[id(self)]
+        except KeyError:
+            return Graph(
+                nodes=fset(node := RequestNode(requested_resource=self.resource)),
+                edges=fset(),
+                start=fset(node),
+                end=fset(node),
+            )
+
+
+@dataclass(frozen=True)
+class Release(ProcessMap):
+    """
+    A process that releases a resource back to the resource pool and completes
+    """
+
+    resource: object
+
+    def to_subgraph(self, subgraphs: dict[ObjectId, Graph]) -> Graph:
+        try:
+            return subgraphs[id(self)]
+        except KeyError:
+            return Graph(
+                nodes=fset(node := ReleaseNode(released_resource=self.resource)),
+                edges=fset(),
+                start=fset(node),
+                end=fset(node),
+            )
+
+
+@dataclass(frozen=True)
+class WithResources(ProcessMap):
+    """
+    A process wrapping a nested process with the request and release of resources
+    """
+
+    process: ProcessMap
+    resources: Sequence[object]
+
+    def to_subgraph(self, subgraphs: dict[ObjectId, Graph]) -> Graph:
+        try:
+            return subgraphs[id(self)]
+        except KeyError:
+            start_nodes = frozenset(
+                RequestNode(requested_resource=resource) for resource in self.resources
+            )
+            center_graph = self.process.to_graph()
+            end_nodes = frozenset(
+                ReleaseNode(released_resource=resource)
+                for resource in reversed(self.resources)
+            )
+            start_links = frozenset(
+                DependencyEdge(u, v)
+                for u, v in product(start_nodes, center_graph.start)
+            )
+            end_links = frozenset(
+                DependencyEdge(u, v) for u, v in product(center_graph.end, end_nodes)
+            )
+
+            return Graph(
+                nodes=start_nodes | center_graph.nodes | end_nodes,
+                edges=start_links | center_graph.edges | end_links,
+                start=start_nodes,
+                end=end_nodes,
+            )
