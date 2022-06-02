@@ -1,20 +1,9 @@
-import pytest
-
 from processmap import Edge, Union
 from processmap import Process as P
-from processmap import Graph, ProcessMap, Series
+from processmap import Graph, Series
 from processmap.common import fset
 
 from .common import isomorphic
-
-
-@pytest.fixture
-def process_map() -> ProcessMap:
-    a = P("A", 1)
-    b = P("B", 3)
-    c = Series((a, b))
-    e = P("E", 5)
-    return Series((c, e))
 
 
 class TestProcess:
@@ -31,36 +20,24 @@ class TestProcessMap:
     def test_add(self) -> None:
         embark = P("Embark", 1)
         sail = P("Sail", 2)
-        disembark = P("Disembark", 1)
-        result = embark + sail + disembark
-        expected = Series((embark, sail, disembark))
+        result = embark + sail
+        expected = Series(embark, sail)
         assert result == expected
 
     def test_or(self) -> None:
         unload = P("Unload", 1)
         refuel = P("Refuel", 2)
         result = unload | refuel
-        expected = Union((unload, refuel))
+        expected = Union(unload, refuel)
         assert result == expected
 
 
 class TestSerial:
-    def test_empty(self) -> None:
-        with pytest.raises(AssertionError):
-            Series(())
-
-    def test_to_graph_single(self) -> None:
-        s = Series((P("A", 1),))
-        expected = Graph(edges=fset(Edge(0, 1, "A", 1)), start=0, end=1)
-        assert isomorphic(s.to_graph(), expected)
-
-    def test_to_graph_nested(self) -> None:
-        a = P("A", 1)
-        b = P("B", 3)
-        c = Series((a, b))
-        e = P("E", 5)
-        s = Series((c, e))
-
+    def test_nested(self) -> None:
+        s = Series(
+            Series(P("A", 1), P("B", 3)),
+            P("E", 5),
+        )
         expected = Graph(
             edges=fset(
                 Edge(0, 1, "A", 1),
@@ -74,20 +51,12 @@ class TestSerial:
 
 
 class TestUnion:
-    def test_empty(self) -> None:
-        with pytest.raises(AssertionError):
-            Union(())
-
-    def test_one(self, process_map: ProcessMap) -> None:
-        assert isomorphic(Union((process_map,)).to_graph(), process_map.to_graph())
-
-    def test_to_graph_nested(self) -> None:
+    def test_nested(self) -> None:
         s = Union(
-            (
-                Union((P("A", 1), P("B", 3))),
-                P("E", 5),
-            )
+            Union(P("A", 1), P("B", 3)),
+            P("E", 5),
         )
+        # TODO: do an actual union
         expected = Graph(
             edges=fset(
                 Edge(0, 1, "A", 1),
