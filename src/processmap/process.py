@@ -11,10 +11,13 @@ from .graph import Edge, Graph, NodeId
 __all__ = ["ProcessMap", "Process", "Seq", "Union"]
 
 
+ObjectId = int
+
+
 class ProcessMap(ABC):
     @abstractmethod
     def to_subgraph(
-        self, new_id: Callable[[], NodeId], subgraphs: dict[ProcessMap, Graph]
+        self, new_id: Callable[[], NodeId], subgraphs: dict[ObjectId, Graph]
     ) -> Graph:
         ...
 
@@ -38,19 +41,19 @@ class ProcessMap(ABC):
     #     "Whether other is a subset or equal of this process map"
 
 
-@dataclass(frozen=True, eq=False)
+@dataclass(frozen=True)
 class Process(ProcessMap):
     name: str
     duration: int
 
     def to_subgraph(
-        self, new_id: Callable[[], NodeId], subgraphs: dict[ProcessMap, Graph]
+        self, new_id: Callable[[], NodeId], subgraphs: dict[ObjectId, Graph]
     ) -> Graph:
         # TODO: reconsider accessing cache here
         try:
-            return subgraphs[self]
+            return subgraphs[id(self)]
         except KeyError:
-            graph = subgraphs[self] = Graph(
+            graph = subgraphs[id(self)] = Graph(
                 fset(
                     Edge(start := new_id(), end := new_id(), self.name, self.duration)
                 ),
@@ -85,10 +88,10 @@ class Seq(ProcessMap):
     b: ProcessMap
 
     def to_subgraph(
-        self, new_id: Callable[[], NodeId], subgraphs: dict[ProcessMap, Graph]
+        self, new_id: Callable[[], NodeId], subgraphs: dict[ObjectId, Graph]
     ) -> Graph:
         try:
-            return subgraphs[self]
+            return subgraphs[id(self)]
         except KeyError:
             graph_a = self.a.to_subgraph(new_id, subgraphs)
             graph_b = self.b.to_subgraph(new_id, subgraphs)
@@ -96,7 +99,7 @@ class Seq(ProcessMap):
                 Edge(u, v, "<seq>", 0)  # TODO: find a solution to ugly string
                 for u, v in product(graph_a.end, graph_b.start)
             }
-            graph = subgraphs[self] = Graph(
+            graph = subgraphs[id(self)] = Graph(
                 graph_b.edges | graph_a.edges | links,
                 start=graph_a.start,
                 end=graph_b.end,
@@ -126,14 +129,14 @@ class Union(ProcessMap):
     b: ProcessMap
 
     def to_subgraph(
-        self, new_id: Callable[[], NodeId], subgraphs: dict[ProcessMap, Graph]
+        self, new_id: Callable[[], NodeId], subgraphs: dict[ObjectId, Graph]
     ) -> Graph:
         try:
-            return subgraphs[self]
+            return subgraphs[id(self)]
         except KeyError:
             graph_a = self.a.to_subgraph(new_id, subgraphs)
             graph_b = self.b.to_subgraph(new_id, subgraphs)
-            graph = subgraphs[self] = Graph(
+            graph = subgraphs[id(self)] = Graph(
                 edges := graph_b.edges | graph_a.edges,
                 start=(graph_a.start | graph_b.start)
                 - frozenset({edge.end for edge in edges}),

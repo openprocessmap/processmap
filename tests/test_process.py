@@ -1,5 +1,3 @@
-import pytest
-
 from processmap import Edge, Graph
 from processmap import Process as P
 from processmap import Seq, Union
@@ -25,7 +23,6 @@ class TestProcessMap:
 
 
 class TestProcess:
-    @pytest.mark.skip
     def test_identity(self) -> None:
         assert P("Sail", 1) == P("Sail", 1)
 
@@ -67,6 +64,19 @@ class TestUnion:
                 fset(
                     Edge(0, 1, "A", 4),
                     Edge(2, 3, "B", 9),
+                ),
+                start=fset(0, 2),
+                end=fset(1, 3),
+            ),
+        )
+
+    def test_similar_process(self) -> None:
+        assert isomorphic(
+            P("A", 1) | P("A", 1),
+            Graph(
+                fset(
+                    Edge(0, 1, "A", 1),
+                    Edge(2, 3, "A", 1),
                 ),
                 start=fset(0, 2),
                 end=fset(1, 3),
