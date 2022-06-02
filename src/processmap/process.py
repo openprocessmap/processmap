@@ -9,7 +9,7 @@ from itertools import count
 from .common import fset  # TODO: one style of imports
 from .graph import Edge, Graph, NodeId
 
-__all__ = ["ProcessMap", "Process", "Series", "Union", "space"]
+__all__ = ["ProcessMap", "Process", "Series", "Union"]
 
 
 class ProcessMap(ABC):
@@ -27,7 +27,7 @@ class ProcessMap(ABC):
         return Series((self, other))
 
     def __or__(self, other: ProcessMap) -> Union:
-        return Union((space() + self + space(), space() + other + space()))
+        return Union((self, other))
 
 
 @dataclass(frozen=True)
@@ -82,16 +82,4 @@ class Union(ProcessMap):
         return Graph(reduce(frozenset.union, edges), start, end)
 
     def __or__(self, other: ProcessMap) -> Union:
-        return Union((*self.processes, space() + other + space()))
-
-
-def chain(*args: ProcessMap) -> Series:
-    return Series(args)
-
-
-def simultaneous(*args: ProcessMap) -> Union:
-    return Union(tuple(chain(space(), arg, space()) for arg in args))
-
-
-def space() -> Process:
-    return Process("space", 0)
+        return Union((*self.processes, other))

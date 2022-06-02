@@ -2,7 +2,7 @@ import pytest
 
 from processmap import Edge, Union
 from processmap import Process as P
-from processmap import Graph, ProcessMap, Series, space
+from processmap import Graph, ProcessMap, Series
 from processmap.common import fset
 
 from .common import isomorphic
@@ -40,7 +40,7 @@ class TestProcessMap:
         unload = P("Unload", 1)
         refuel = P("Refuel", 2)
         result = unload | refuel
-        expected = Union((space() + unload + space(), space() + refuel + space()))
+        expected = Union((unload, refuel))
         assert result == expected
 
 
