@@ -1,4 +1,5 @@
 from __future__ import annotations
+from itertools import product
 
 from abc import ABC, abstractmethod
 from collections.abc import Callable
@@ -8,44 +9,70 @@ from itertools import count
 from .common import fset
 from .graph import Edge, Graph, NodeId
 
-__all__ = ["ProcessMap", "Process", "Series", "Union"]
+__all__ = ["ProcessMap", "Process", "Seq", "Union"]
 
 
 class ProcessMap(ABC):
     @abstractmethod
     def to_subgraph(
-        self, new_id: Callable[[], NodeId], start: NodeId, end: NodeId
+        self, new_id: Callable[[], NodeId], subgraphs: dict[ProcessMap, Graph]
     ) -> Graph:
         ...
 
     def to_graph(self) -> Graph:
         new_id = count().__next__
-        return self.to_subgraph(new_id, new_id(), new_id())
+        return self.to_subgraph(new_id, subgraphs={})
 
-    def __add__(self, other: ProcessMap) -> Series:
-        return Series(self, other)
+    def __add__(self, other: ProcessMap) -> Seq:
+        # TODO: make this a chaining operator to prevent overly nesting
+        return Seq(self, other)
 
-    def __or__(self, other: ProcessMap) -> Union:
+    def __or__(self, other: ProcessMap) -> ProcessMap:
+        "Create a merged union of this and another process map"
         return Union(self, other)
 
+    # def __le__(self, other: ProcessMap) -> bool:
+    #     "Whether other is a subset or equal of this process map"
 
-@dataclass(frozen=True)
+
+@dataclass(frozen=True, eq=False)
 class Process(ProcessMap):
     name: str
     duration: int
 
     def to_subgraph(
-        self, new_id: Callable[[], NodeId], start: NodeId, end: NodeId
+        self, new_id: Callable[[], NodeId], subgraphs: dict[ProcessMap, Graph]
     ) -> Graph:
-        return Graph(
-            edges=fset(Edge(start, end, self.name, self.duration)),
-            start=start,
-            end=end,
-        )
+        # TODO: reconsider accessing cache here
+        try:
+            return subgraphs[self]
+        except KeyError:
+            graph = subgraphs[self] = Graph(
+                fset(
+                    Edge(start := new_id(), end := new_id(), self.name, self.duration)
+                ),
+                start=fset(start),
+                end=fset(end),
+            )
+            return graph
+
+    # def __or__(self, other: ProcessMap) -> ProcessMap:
+    #     if isinstance(other, Seq | Process):
+    #         return other if self <= other else Union(self, other)
+    #     return NotImplemented
+
+    # def __le__(self, other: ProcessMap) -> bool:
+    #     match other:
+    #         case Process():
+    #             return self == other
+    #         case Seq(a, b):
+    #             return self <= a or self <= b
+    #         case _:
+    #             return NotImplemented
 
 
 @dataclass(frozen=True)
-class Series(ProcessMap):
+class Seq(ProcessMap):
     """
     Indicates relationship between two processes where B may start
     only after A is done
@@ -55,31 +82,59 @@ class Series(ProcessMap):
     b: ProcessMap
 
     def to_subgraph(
-        self, new_id: Callable[[], NodeId], start: NodeId, end: NodeId
+        self, new_id: Callable[[], NodeId], subgraphs: dict[ProcessMap, Graph]
     ) -> Graph:
-        return Graph(
-            self.b.to_subgraph(new_id, link := new_id(), end).edges
-            | self.a.to_subgraph(new_id, start, link).edges,
-            start,
-            end,
-        )
+        try:
+            return subgraphs[self]
+        except KeyError:
+            graph_a = self.a.to_subgraph(new_id, subgraphs)
+            graph_b = self.b.to_subgraph(new_id, subgraphs)
+            links = {
+                Edge(u, v, "<seq>", 0)  # TODO: find a solution to ugly string
+                for u, v in product(graph_a.end, graph_b.start)
+            }
+            graph = subgraphs[self] = Graph(
+                graph_b.edges | graph_a.edges | links,
+                start=graph_a.start,
+                end=graph_b.end,
+            )
+            return graph
+
+    # def __or__(self, other: ProcessMap) -> ProcessMap:
+    #     match other:
+    #         case Process():
+    #             return self if other <= self else Union(self, other)
+    #         case Seq():
+    #             # TODO: detect overlaps
+    #             return Union(self, other)
+    #     return NotImplemented
+
+    # def __le__(self, p: ProcessMap) -> bool:
+    #     return NotImplemented
 
 
 @dataclass(frozen=True)
 class Union(ProcessMap):
     """
-    Indicates two processes are part of the same process map.
-    Overlapping pars are merged
+    Two processes which may or may not be related
     """
+
     a: ProcessMap
     b: ProcessMap
 
     def to_subgraph(
-        self, new_id: Callable[[], NodeId], start: NodeId, end: NodeId
+        self, new_id: Callable[[], NodeId], subgraphs: dict[ProcessMap, Graph]
     ) -> Graph:
-        return Graph(
-            self.a.to_subgraph(new_id, start, end).edges
-            | self.b.to_subgraph(new_id, start, end).edges,
-            start,
-            end,
-        )
+        if self.a == self.b:
+            return self.a.to_subgraph(new_id)
+        else:
+            graph_a = self.a.to_subgraph(new_id)
+            graph_b = self.b.to_subgraph(new_id)
+            return Graph(
+                graph_a.edges | graph_b.edges,
+                start=graph_a.start | graph_b.start,
+                end=graph_a.end | graph_b.end,
+            )
+
+    # def __or__(self, other: ProcessMap) -> ProcessMap:
+    #     raise NotImplementedError()

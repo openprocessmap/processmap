@@ -1,8 +1,8 @@
-from collections.abc import Mapping
+from collections.abc import Mapping, Set
 
 from networkx import MultiDiGraph, is_isomorphic  # type: ignore
 
-from processmap import NodeId, Graph
+from processmap import Graph, ProcessMap, NodeId
 
 
 def _as_networkx(process_graph: Graph) -> MultiDiGraph:
@@ -14,7 +14,10 @@ def _as_networkx(process_graph: Graph) -> MultiDiGraph:
     return di_graph
 
 
-def isomorphic(a: Graph, b: Graph) -> bool:
+# TODO: rename to make clear no process graph isomorphism
+def isomorphic(_a: Graph | ProcessMap, _b: Graph | ProcessMap) -> bool:
+    a: Graph = _a if isinstance(_a, Graph) else _a.to_graph()
+    b: Graph = _b if isinstance(_b, Graph) else _b.to_graph()
     x = _as_networkx(a)
     y = _as_networkx(b)
     return (
@@ -24,10 +27,7 @@ def isomorphic(a: Graph, b: Graph) -> bool:
     )
 
 
-def _bounds(x: Graph) -> tuple[NodeId, NodeId]:
-    if len(x.edges) == 0:  # TODO: remove?
-        return (x.start, x.start)
-    # We can assume only one end/start exists in a process graph
-    [start] = {e.start for e in x.edges} - {e.end for e in x.edges}
-    [end] = {e.end for e in x.edges} - {e.start for e in x.edges}
+def _bounds(x: Graph) -> tuple[Set[NodeId], Set[NodeId]]:
+    start = {e.start for e in x.edges} - {e.end for e in x.edges}
+    end = {e.end for e in x.edges} - {e.start for e in x.edges}
     return start, end

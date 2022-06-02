@@ -22,5 +22,7 @@ class Graph:
     """
 
     edges: frozenset[Edge]
-    start: NodeId
-    end: NodeId
+
+    # TODO: reconsider if we want this duplicate info
+    start: frozenset[NodeId]
+    end: frozenset[NodeId]
