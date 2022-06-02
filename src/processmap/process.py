@@ -6,19 +6,20 @@ from dataclasses import dataclass
 from functools import reduce
 from itertools import count
 
-from processmap.process_graph import Edge, NodeId, ProcessGraph
+from .common import fset  # TODO: one style of imports
+from .graph import Edge, Graph, NodeId
 
-from .helpers import fset  # TODO: one style of imports
+__all__ = ["ProcessMap", "Process", "Series", "Parallel", "space"]
 
 
 class ProcessMap(ABC):
     @abstractmethod
     def to_subgraph(
         self, counter: Callable[[], NodeId], start: NodeId, end: NodeId
-    ) -> ProcessGraph:
+    ) -> Graph:
         ...
 
-    def to_graph(self) -> ProcessGraph:
+    def to_graph(self) -> Graph:
         counter = count().__next__
         return self.to_subgraph(counter, counter(), counter())
 
@@ -36,8 +37,8 @@ class Process(ProcessMap):
 
     def to_subgraph(
         self, counter: Callable[[], NodeId], start: NodeId, end: NodeId
-    ) -> ProcessGraph:
-        return ProcessGraph(
+    ) -> Graph:
+        return Graph(
             edges=fset(Edge(start, end, self.name, self.duration)),
             start=start,
             end=end,
@@ -53,7 +54,7 @@ class Series(ProcessMap):
 
     def to_subgraph(
         self, counter: Callable[[], NodeId], start: NodeId, end: NodeId
-    ) -> ProcessGraph:
+    ) -> Graph:
         last = start
         edges: set[Edge] = set()
         for p in self.processes[:-1]:
@@ -61,7 +62,7 @@ class Series(ProcessMap):
             edges |= subgraph.edges
             last = subgraph.end
         edges |= self.processes[-1].to_subgraph(counter, last, end).edges
-        return ProcessGraph(frozenset(edges), start, end)
+        return Graph(frozenset(edges), start, end)
 
     def __add__(self, other: ProcessMap) -> Series:
         return Series((*self.processes, other))
@@ -76,9 +77,9 @@ class Parallel(ProcessMap):
 
     def to_subgraph(
         self, counter: Callable[[], NodeId], start: NodeId, end: NodeId
-    ) -> ProcessGraph:
+    ) -> Graph:
         edges = [p.to_subgraph(counter, start, end).edges for p in self.processes]
-        return ProcessGraph(reduce(frozenset.union, edges), start, end)
+        return Graph(reduce(frozenset.union, edges), start, end)
 
     def __or__(self, other: ProcessMap) -> Parallel:
         return Parallel((*self.processes, space() + other + space()))

@@ -1,5 +1,7 @@
 from dataclasses import dataclass
 
+__all__ = ["Graph", "Edge", "NodeId"]
+
 NodeId = int
 
 
@@ -12,7 +14,7 @@ class Edge:
 
 
 @dataclass(frozen=True)
-class ProcessGraph:
+class Graph:
     """
     A connected directed acyclic graph meeting two criteria:
     - There is only one initial node (the source) (a node without incoming edges)

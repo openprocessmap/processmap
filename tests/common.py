@@ -2,10 +2,10 @@ from collections.abc import Mapping
 
 from networkx import MultiDiGraph, is_isomorphic  # type: ignore
 
-from processmap.process_graph import NodeId, ProcessGraph
+from processmap import NodeId, Graph
 
 
-def _as_networkx(process_graph: ProcessGraph) -> MultiDiGraph:
+def _as_networkx(process_graph: Graph) -> MultiDiGraph:
     di_graph = MultiDiGraph()
     di_graph.add_edges_from(
         (edge.start, edge.end, {"name": edge.name, "duration": edge.duration})
@@ -14,7 +14,7 @@ def _as_networkx(process_graph: ProcessGraph) -> MultiDiGraph:
     return di_graph
 
 
-def process_graphs_isomorphic(a: ProcessGraph, b: ProcessGraph) -> bool:
+def isomorphic(a: Graph, b: Graph) -> bool:
     x = _as_networkx(a)
     y = _as_networkx(b)
     return (
@@ -24,7 +24,7 @@ def process_graphs_isomorphic(a: ProcessGraph, b: ProcessGraph) -> bool:
     )
 
 
-def _bounds(x: ProcessGraph) -> tuple[NodeId, NodeId]:
+def _bounds(x: Graph) -> tuple[NodeId, NodeId]:
     if len(x.edges) == 0:  # TODO: remove?
         return (x.start, x.start)
     # We can assume only one end/start exists in a process graph
