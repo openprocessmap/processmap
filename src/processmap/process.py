@@ -9,7 +9,7 @@ from itertools import count
 from .common import fset  # TODO: one style of imports
 from .graph import Edge, Graph, NodeId
 
-__all__ = ["ProcessMap", "Process", "Series", "Parallel", "space"]
+__all__ = ["ProcessMap", "Process", "Series", "Union", "space"]
 
 
 class ProcessMap(ABC):
@@ -26,8 +26,8 @@ class ProcessMap(ABC):
     def __add__(self, other: ProcessMap) -> Series:
         return Series((self, other))
 
-    def __or__(self, other: ProcessMap) -> Parallel:
-        return Parallel((space() + self + space(), space() + other + space()))
+    def __or__(self, other: ProcessMap) -> Union:
+        return Union((space() + self + space(), space() + other + space()))
 
 
 @dataclass(frozen=True)
@@ -69,7 +69,7 @@ class Series(ProcessMap):
 
 
 @dataclass(frozen=True)
-class Parallel(ProcessMap):
+class Union(ProcessMap):
     processes: tuple[ProcessMap, ...]  # non-empty
 
     def __post_init__(self) -> None:
@@ -81,16 +81,16 @@ class Parallel(ProcessMap):
         edges = [p.to_subgraph(counter, start, end).edges for p in self.processes]
         return Graph(reduce(frozenset.union, edges), start, end)
 
-    def __or__(self, other: ProcessMap) -> Parallel:
-        return Parallel((*self.processes, space() + other + space()))
+    def __or__(self, other: ProcessMap) -> Union:
+        return Union((*self.processes, space() + other + space()))
 
 
 def chain(*args: ProcessMap) -> Series:
     return Series(args)
 
 
-def simultaneous(*args: ProcessMap) -> Parallel:
-    return Parallel(tuple(chain(space(), arg, space()) for arg in args))
+def simultaneous(*args: ProcessMap) -> Union:
+    return Union(tuple(chain(space(), arg, space()) for arg in args))
 
 
 def space() -> Process:

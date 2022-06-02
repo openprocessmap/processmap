@@ -1,6 +1,6 @@
 import pytest
 
-from processmap import Edge, Parallel
+from processmap import Edge, Union
 from processmap import Process as P
 from processmap import Graph, ProcessMap, Series, space
 from processmap.common import fset
@@ -40,7 +40,7 @@ class TestProcessMap:
         unload = P("Unload", 1)
         refuel = P("Refuel", 2)
         result = unload | refuel
-        expected = Parallel((space() + unload + space(), space() + refuel + space()))
+        expected = Union((space() + unload + space(), space() + refuel + space()))
         assert result == expected
 
 
@@ -73,20 +73,20 @@ class TestSerial:
         assert isomorphic(s.to_graph(), expected)
 
 
-class TestParallel:
+class TestUnion:
     def test_empty(self) -> None:
         with pytest.raises(AssertionError):
-            Parallel(())
+            Union(())
 
     def test_to_graph_single(self, process_map: ProcessMap) -> None:
-        assert isomorphic(Parallel((process_map,)).to_graph(), process_map.to_graph())
+        assert isomorphic(Union((process_map,)).to_graph(), process_map.to_graph())
 
     def test_to_graph_nested(self) -> None:
         a = P("A", 1)
         b = P("B", 3)
-        c = Parallel((a, b))
+        c = Union((a, b))
         e = P("E", 5)
-        s = Parallel((c, e))
+        s = Union((c, e))
 
         expected = Graph(
             edges=fset(
@@ -135,7 +135,7 @@ class TestParallel:
 #             idle4 := P("idle", 0),
 #         )
 #     )
-#     dock_both = Parallel((dock1series, dock2series))
+#     dock_both = Union((dock1series, dock2series))
 #
 #     result = list(dock_both.run())
 #
