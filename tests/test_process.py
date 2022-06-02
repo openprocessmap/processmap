@@ -1,3 +1,5 @@
+import pytest
+
 from processmap import Edge, Graph
 from processmap import Process as P
 from processmap import Seq, Union
@@ -6,7 +8,27 @@ from processmap.common import fset
 from .common import isomorphic
 
 
+class TestProcessMap:
+    def test_rshift(self) -> None:
+        embark = P("Embark", 1)
+        sail = P("Sail", 2)
+        result = embark >> sail
+        expected = Seq(embark, sail)
+        assert result == expected
+
+    def test_or(self) -> None:
+        fuel = P("Fuel", 1)
+        load = P("Load", 2)
+        result = fuel | load
+        expected = Union(fuel, load)
+        assert result == expected
+
+
 class TestProcess:
+    @pytest.mark.skip
+    def test_identity(self) -> None:
+        assert P("Sail", 1) == P("Sail", 1)
+
     def test_to_graph(self) -> None:
         result = P("test", 1).to_graph()
         expected = Graph(fset(Edge(5, 6, "test", 1)), start=fset(5), end=fset(6))
@@ -18,10 +40,7 @@ class TestProcess:
 
 class TestSeq:
     def test_nested(self) -> None:
-        s = Seq(
-            Seq(P("A", 1), P("B", 3)),
-            P("E", 5),
-        )
+        s = P("A", 1) >> P("B", 3) >> P("E", 5)
         expected = Graph(
             fset(
                 Edge(0, 1, "A", 1),
@@ -31,112 +50,113 @@ class TestSeq:
                 Edge(4, 5, "E", 5),
             ),
             start=fset(0),
-            end=fset(5)
+            end=fset(5),
         )
         assert isomorphic(s, expected)
 
 
-# class TestUnion:
-#     def test_same_process(self) -> None:
-#         p = P("A", 1)
-#         assert isomorphic(p | p, p)
+class TestUnion:
+    def test_same_process(self) -> None:
+        p = P("A", 1)
+        assert isomorphic(p | p, p)
 
-#     def test_different_process(self) -> None:
-#         assert isomorphic(
-#             P("A", 4) | P("B", 9),
-#             Graph(
-#                 fset(
-#                     Edge(0, 1, "A", 4),
-#                     Edge(2, 3, "B", 9),
-#                 ),
-#                 start=fset(0, 2),
-#                 end=fset(1, 3),
-#             ),
-#         )
+    def test_different_process(self) -> None:
+        assert isomorphic(
+            P("A", 4) | P("B", 9),
+            Graph(
+                fset(
+                    Edge(0, 1, "A", 4),
+                    Edge(2, 3, "B", 9),
+                ),
+                start=fset(0, 2),
+                end=fset(1, 3),
+            ),
+        )
 
-#     def test_process_overlaps_seq(self) -> None:
-#         x = P("B", 1)
-#         y = Seq(P("A", 1), Seq(x, P("C", 1)))
-#         assert isomorphic(x | y, y)
-#         assert isomorphic(y | x, y)
+    def test_process_overlaps_seq(self) -> None:
+        x = P("B", 1)
+        y = P("A", 1) >> x >> P("C", 1)
+        assert isomorphic(x | y, y)
+        assert isomorphic(y | x, y)
 
-#     def test_process_doesnt_overlap_seq(self) -> None:
-#         x = P("X", 1)
-#         y = Seq(P("A", 1), Seq(P("B", 1), P("C", 1)))
-#         assert isomorphic(
-#             x | y,
-#             expect := Graph(
-#                 fset(
-#                     Edge(0, 1, "A", 1),
-#                     Edge(1, 2, "B", 1),
-#                     Edge(2, 3, "C", 1),
-#                     Edge(4, 5, "X", 1),
-#                 ),
-#                 start=fset(0, 4),
-#                 end=fset(3, 5),
-#             ),
-#         )
-#         assert isomorphic(y | x, expect)  # also in reverse order!
+    def test_process_doesnt_overlap_seq(self) -> None:
+        x = P("X", 1)
+        y = P("A", 1) >> P("B", 1) >> P("C", 1)
+        expect = Graph(
+            fset(
+                Edge(0, 1, "A", 1),
+                Edge(1, 2, "<seq>", 0),
+                Edge(2, 3, "B", 1),
+                Edge(3, 4, "<seq>", 0),
+                Edge(4, 5, "C", 1),
+                Edge(6, 7, "X", 1),
+            ),
+            start=fset(0, 6),
+            end=fset(5, 7),
+        )
+        assert isomorphic(x | y, expect)
+        assert isomorphic(y | x, expect)
 
-#     def test_seqs_without_overlap(self) -> None:
-#         x = Seq(P("A", 1), Seq(P("B", 1), P("C", 1)))
-#         y = Seq(P("D", 1), Seq(P("E", 1), P("F", 1)))
-#         assert isomorphic(
-#             x | y,
-#             expect := Graph(
-#                 fset(
-#                     Edge(0, 1, "A", 1),
-#                     Edge(1, 2, "B", 1),
-#                     Edge(2, 3, "C", 1),
-#                     Edge(4, 5, "D", 1),
-#                     Edge(5, 6, "E", 1),
-#                     Edge(6, 7, "F", 1),
-#                 ),
-#                 start=fset(0, 4),
-#                 end=fset(3, 7),
-#             ),
-#         )
-#         assert isomorphic(y | x, expect)  # also in reverse order!
+    def test_seqs_without_overlap(self) -> None:
+        x = P("A", 1) >> P("B", 1) >> P("C", 1)
+        y = P("D", 1) >> P("E", 1) >> P("F", 1)
+        assert isomorphic(
+            x | y,
+            expect := Graph(
+                fset(
+                    Edge(0, 1, "A", 1),
+                    Edge(1, 2, "<seq>", 0),
+                    Edge(2, 3, "B", 1),
+                    Edge(3, 4, "<seq>", 0),
+                    Edge(4, 5, "C", 1),
+                    Edge(10, 11, "D", 1),
+                    Edge(11, 12, "<seq>", 0),
+                    Edge(12, 13, "E", 1),
+                    Edge(13, 14, "<seq>", 0),
+                    Edge(14, 15, "F", 1),
+                ),
+                start=fset(0, 10),
+                end=fset(5, 15),
+            ),
+        )
+        assert isomorphic(y | x, expect)  # also in reverse order!
 
-    # def test_fully_disjoint_nested(self) -> None:
-    #     assert isomorphic(
-    #         union(P("A", 4), union(P("B", 9), P("C", 10))),
-    #         Graph(
-    #             fset(
-    #                 Edge(0, 1, "A", 4),
-    #                 Edge(2, 3, "B", 9),
-    #                 Edge(4, 5, "C", 10),
-    #             )
-    #         ),
-    #     )
+    def test_fully_disjoint_nested(self) -> None:
+        assert isomorphic(
+            P("A", 4) | P("B", 9) | P("C", 10),
+            Graph(
+                fset(
+                    Edge(0, 1, "A", 4),
+                    Edge(2, 3, "B", 9),
+                    Edge(4, 5, "C", 10),
+                ),
+                start=fset(0, 2, 4),
+                end=fset(1, 3, 5),
+            ),
+        )
 
-    # def test_partially_disjoint(self) -> None:
-    #     x = Seq(P("A", 1), Seq(b := P("B", 1), P("C", 1)))
-    #     y = Seq(P("D", 1), Seq(b, P("E", 1)))
-    #     assert isomorphic(
-    #         union(x, y),
-    #         Graph(
-    #             fset(
-    #                 Edge(0, 1, "A", 1),
-    #                 Edge(4, 1, "D", 1),
-    #                 Edge(1, 2, "B", 1),
-    #                 Edge(2, 3, "C", 1),
-    #                 Edge(2, 5, "E", 1),
-    #             )
-    #         ),
-    #     )
-
-
-class TestProcessMap:
-    def test_add(self) -> None:
-        embark = P("Embark", 1)
-        sail = P("Sail", 2)
-        result = embark + sail
-        expected = Seq(embark, sail)
-        assert result == expected
+    def test_partially_disjoint(self) -> None:
+        x = P("A", 1) >> (b := P("B", 1)) >> P("C", 1)
+        y = P("D", 1) >> b >> P("E", 1)
+        expected = Graph(
+            fset(
+                Edge(0, 1, "A", 1),
+                Edge(1, 2, "<seq>", 0),
+                Edge(2, 3, "B", 1),
+                Edge(3, 4, "<seq>", 0),
+                Edge(4, 5, "C", 1),
+                Edge(10, 11, "D", 1),
+                Edge(11, 2, "<seq>", 0),
+                Edge(3, 14, "<seq>", 0),
+                Edge(14, 15, "E", 1),
+            ),
+            start=fset(0, 10),
+            end=fset(5, 15),
+        )
+        assert isomorphic(x | y, expected)
+        assert isomorphic(y | x, expected)
 
 
-#
 # def test_process_with_resource() -> None:
 #     quay = Resource()
 #     dock = P("dock", 1).using(quay)

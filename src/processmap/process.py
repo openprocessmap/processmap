@@ -1,10 +1,9 @@
 from __future__ import annotations
-from itertools import product
 
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from dataclasses import dataclass
-from itertools import count
+from itertools import count, product
 
 from .common import fset
 from .graph import Edge, Graph, NodeId
@@ -24,6 +23,10 @@ class ProcessMap(ABC):
         return self.to_subgraph(new_id, subgraphs={})
 
     def __add__(self, other: ProcessMap) -> Seq:
+        # TODO: make this a chaining operator to prevent overly nesting
+        return Seq(self, other)
+
+    def __rshift__(self, other: ProcessMap) -> Seq:
         # TODO: make this a chaining operator to prevent overly nesting
         return Seq(self, other)
 
@@ -125,16 +128,19 @@ class Union(ProcessMap):
     def to_subgraph(
         self, new_id: Callable[[], NodeId], subgraphs: dict[ProcessMap, Graph]
     ) -> Graph:
-        if self.a == self.b:
-            return self.a.to_subgraph(new_id)
-        else:
-            graph_a = self.a.to_subgraph(new_id)
-            graph_b = self.b.to_subgraph(new_id)
-            return Graph(
-                graph_a.edges | graph_b.edges,
-                start=graph_a.start | graph_b.start,
-                end=graph_a.end | graph_b.end,
+        try:
+            return subgraphs[self]
+        except KeyError:
+            graph_a = self.a.to_subgraph(new_id, subgraphs)
+            graph_b = self.b.to_subgraph(new_id, subgraphs)
+            graph = subgraphs[self] = Graph(
+                edges := graph_b.edges | graph_a.edges,
+                start=(graph_a.start | graph_b.start)
+                - frozenset({edge.end for edge in edges}),
+                end=(graph_a.end | graph_b.end)
+                - frozenset({edge.start for edge in edges}),
             )
+            return graph
 
     # def __or__(self, other: ProcessMap) -> ProcessMap:
     #     raise NotImplementedError()

@@ -2,7 +2,7 @@ from collections.abc import Mapping, Set
 
 from networkx import MultiDiGraph, is_isomorphic  # type: ignore
 
-from processmap import Graph, ProcessMap, NodeId
+from processmap import Graph, NodeId, ProcessMap
 
 
 def _as_networkx(process_graph: Graph) -> MultiDiGraph:
