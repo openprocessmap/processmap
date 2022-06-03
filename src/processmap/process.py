@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Sequence
+from collections.abc import Sequence, Callable
 from dataclasses import dataclass
 from functools import reduce
 from itertools import product
@@ -159,3 +159,39 @@ class WithResources(ProcessMap):
             map(Release, reversed(self.resources)),
         )
         return (all_requests >> self.process >> all_releases).to_subgraph(subgraphs)
+
+
+# @dataclass(frozen=True)
+# class WaitUntil(ProcessMap):
+#     """
+#     A process that only finishes after a specific time on the simulation clock has passed
+#     If it starts after this time it finishes immediately
+#     """
+#
+#     earliest_start_time: int
+#
+#
+# @dataclass(frozen=True)
+# class Option(ProcessMap):
+#     """
+#     A process that can be skipped, depending on a condition evaluated at the start of the wrapping process
+#     """
+#
+#     condition: Callable[[], bool]
+#     process: ProcessMap
+#
+#
+# @dataclass(frozen=True)
+# class Switch(ProcessMap):
+#     """
+#     A process that wraps two process
+#     Depending on a condition evaluated at the start of the wrapping process
+#     only one of the two processes will be executed and the other will be skipped
+#
+#     Should behave as:
+#     Option(F, process1) | Option(lambda x: not F(), process2)
+#     """
+#
+#     condition: Callable[[], bool]
+#     process1: ProcessMap
+#     process2: ProcessMap
