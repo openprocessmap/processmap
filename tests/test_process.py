@@ -4,7 +4,7 @@ from processmap import Process as P
 from processmap import ProcessEdge as PE
 from processmap import ProcessNode, Seq, Union
 from processmap.common import fset
-from processmap.graph import RequestNode, ReleaseNode
+from processmap.graph import ReleaseNode, RequestNode
 from processmap.process import Request
 
 from .common import isomorphic_graph
@@ -250,11 +250,11 @@ class TestRequest:
     def test_request(self) -> None:
         ship_required = Request(ship := object())
         expected = Graph(
-                nodes=fset(node := RequestNode(requested_resource=ship)),
-                edges=fset(),
-                start=fset(node),
-                end=fset(node),
-            )
+            nodes=fset(node := RequestNode(requested_resource=ship)),
+            edges=fset(),
+            start=fset(node),
+            end=fset(node),
+        )
 
         assert isomorphic_graph(ship_required, expected)
 
@@ -285,7 +285,6 @@ class TestUsing:
         result = sail_ship_with_crew.to_graph()
 
         assert isomorphic_graph(result, expected)
-
 
 
 # def test_process_with_resource() -> None:

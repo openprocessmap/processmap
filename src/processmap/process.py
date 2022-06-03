@@ -3,6 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from dataclasses import dataclass
+from functools import reduce
 from itertools import product
 
 from .common import fset
@@ -126,12 +127,13 @@ class Request(ProcessMap):
         try:
             return subgraphs[id(self)]
         except KeyError:
-            return Graph(
+            graph = subgraphs[id(self)] = Graph(
                 nodes=fset(node := RequestNode(requested_resource=self.resource)),
                 edges=fset(),
                 start=fset(node),
                 end=fset(node),
             )
+            return graph
 
 
 @dataclass(frozen=True)
@@ -146,12 +148,13 @@ class Release(ProcessMap):
         try:
             return subgraphs[id(self)]
         except KeyError:
-            return Graph(
+            graph = subgraphs[id(self)] = Graph(
                 nodes=fset(node := ReleaseNode(released_resource=self.resource)),
                 edges=fset(),
                 start=fset(node),
                 end=fset(node),
             )
+            return graph
 
 
 @dataclass(frozen=True)
@@ -167,25 +170,16 @@ class WithResources(ProcessMap):
         try:
             return subgraphs[id(self)]
         except KeyError:
-            start_nodes = frozenset(
-                RequestNode(requested_resource=resource) for resource in self.resources
-            )
-            center_graph = self.process.to_graph()
-            end_nodes = frozenset(
-                ReleaseNode(released_resource=resource)
-                for resource in reversed(self.resources)
-            )
-            start_links = frozenset(
-                DependencyEdge(u, v)
-                for u, v in product(start_nodes, center_graph.start)
-            )
-            end_links = frozenset(
-                DependencyEdge(u, v) for u, v in product(center_graph.end, end_nodes)
+            if len(self.resources) == 1:
+                graph = subgraphs[id(self)] = self.process.to_subgraph(subgraphs)
+                return graph
+
+            all_requests = reduce(ProcessMap.__or__, map(Request, self.resources))
+            all_releases = reduce(
+                ProcessMap.__or__, map(Release, reversed(self.resources))
             )
 
-            return Graph(
-                nodes=start_nodes | center_graph.nodes | end_nodes,
-                edges=start_links | center_graph.edges | end_links,
-                start=start_nodes,
-                end=end_nodes,
-            )
+            graph = subgraphs[id(self)] = (
+                all_requests >> self.process >> all_releases
+            ).to_subgraph(subgraphs)
+            return graph

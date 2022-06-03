@@ -17,7 +17,7 @@ class BaseNode(GraphObject):
     def attributes(self) -> Mapping[str, object]:
         return dict()
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"{type(self).__name__}({id(self)})"
 
 
@@ -54,7 +54,7 @@ class BaseEdge(GraphObject):
     def attributes(self) -> Mapping[str, object]:
         return dict()
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"{type(self).__name__}({self.start} -> {self.end})"
 
 
