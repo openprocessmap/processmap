@@ -5,6 +5,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from functools import reduce
 from itertools import product
+from typing import cast
 
 from .common import fset
 from .graph import (
@@ -174,9 +175,12 @@ class WithResources(ProcessMap):
                 graph = subgraphs[id(self)] = self.process.to_subgraph(subgraphs)
                 return graph
 
-            all_requests = reduce(ProcessMap.__or__, map(Request, self.resources))
+            all_requests = reduce(
+                Union, cast(Sequence[ProcessMap], map(Request, self.resources))
+            )
             all_releases = reduce(
-                ProcessMap.__or__, map(Release, reversed(self.resources))
+                Union,
+                cast(Sequence[ProcessMap], map(Release, reversed(self.resources))),
             )
 
             graph = subgraphs[id(self)] = (

@@ -4,7 +4,15 @@ from abc import ABC, abstractmethod
 from collections.abc import Mapping
 from dataclasses import dataclass
 
-__all__ = ["Graph", "Node", "ProcessNode", "ProcessEdge", "DependencyEdge"]
+__all__ = [
+    "Graph",
+    "Node",
+    "ProcessNode",
+    "RequestNode",
+    "ReleaseNode",
+    "ProcessEdge",
+    "DependencyEdge",
+]
 
 
 class GraphObject(ABC):
