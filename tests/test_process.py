@@ -2,10 +2,9 @@ from processmap import DependencyEdge as DE
 from processmap import Graph
 from processmap import Process as P
 from processmap import ProcessEdge as PE
-from processmap import ProcessNode, Seq, Union
+from processmap import ProcessNode, Release, Request, Seq, Union
 from processmap.common import fset
 from processmap.graph import ReleaseNode, RequestNode
-from processmap.process import Request
 
 from .common import isomorphic_graph
 
@@ -246,28 +245,37 @@ class TestUnion:
         assert isomorphic_graph(y | x, expected)
 
 
-class TestRequest:
-    def test_request(self) -> None:
-        ship_required = Request(ship := object())
-        expected = Graph(
-            nodes=fset(node := RequestNode(requested_resource=ship)),
-            edges=fset(),
-            start=fset(node),
-            end=fset(node),
-        )
+def test_request() -> None:
+    ship_required = Request(ship := object())
+    expected = Graph(
+        nodes=fset(node := RequestNode(ship)),
+        edges=fset(),
+        start=fset(node),
+        end=fset(node),
+    )
+    assert isomorphic_graph(ship_required, expected)
 
-        assert isomorphic_graph(ship_required, expected)
+
+def test_release() -> None:
+    ship_released = Release(ship := object())
+    expected = Graph(
+        nodes=fset(node := ReleaseNode(ship)),
+        edges=fset(),
+        start=fset(node),
+        end=fset(node),
+    )
+    assert isomorphic_graph(ship_released, expected)
 
 
 class TestUsing:
-    def test_using_single_process(self) -> None:
+    def test_single_process_two_resources(self) -> None:
         sail_ship_with_crew = P("Sail", 1).using(ship := object(), crew := object())
         expected = Graph(
             nodes=fset(
-                ship1 := RequestNode(requested_resource=ship),
-                ship2 := ReleaseNode(released_resource=ship),
-                crew1 := RequestNode(requested_resource=crew),
-                crew2 := ReleaseNode(released_resource=crew),
+                ship1 := RequestNode(ship),
+                ship2 := ReleaseNode(ship),
+                crew1 := RequestNode(crew),
+                crew2 := ReleaseNode(crew),
                 sail1 := ProcessNode(),
                 sail2 := ProcessNode(),
             ),
@@ -282,6 +290,25 @@ class TestUsing:
             end=fset(crew2, ship2),
         )
         assert isomorphic_graph(sail_ship_with_crew, expected)
+
+    def test_single_process_one_resource(self) -> None:
+        sail_ship = P("Sail", 1).using(ship := object())
+        expected = Graph(
+            nodes=fset(
+                ship1 := RequestNode(ship),
+                ship2 := ReleaseNode(ship),
+                sail1 := ProcessNode(),
+                sail2 := ProcessNode(),
+            ),
+            edges=fset(
+                DE(ship1, sail1),
+                PE(sail1, sail2, "Sail", 1),
+                DE(sail2, ship2),
+            ),
+            start=fset(ship1),
+            end=fset(ship2),
+        )
+        assert isomorphic_graph(sail_ship, expected)
 
 
 # def test_process_with_resource() -> None:
