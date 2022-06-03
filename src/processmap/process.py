@@ -32,7 +32,6 @@ class ProcessMap(ABC):
         return self.to_subgraph(subgraphs={})
 
     def __rshift__(self, other: ProcessMap) -> Seq:
-        # TODO: make this a chaining operator to prevent overly nesting
         return Seq(self, other)
 
     def __or__(self, other: ProcessMap) -> ProcessMap:
@@ -108,10 +107,12 @@ class Union(ProcessMap):
             graph = subgraphs[id(self)] = Graph(
                 nodes=graph_a.nodes | graph_b.nodes,
                 edges=(edges := graph_a.edges | graph_b.edges),
-                start=(graph_a.start | graph_b.start)
-                - frozenset({edge.end for edge in edges}),
-                end=(graph_a.end | graph_b.end)
-                - frozenset({edge.start for edge in edges}),
+                start=(graph_a.start | graph_b.start).difference(
+                    edge.end for edge in edges
+                ),
+                end=(graph_a.end | graph_b.end).difference(
+                    edge.start for edge in edges
+                ),
             )
             return graph
 

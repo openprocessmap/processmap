@@ -21,10 +21,7 @@ class GraphObject(ABC):
         ...
 
 
-class BaseNode(GraphObject):
-    def attributes(self) -> Mapping[str, object]:
-        return dict()
-
+class BaseNode(GraphObject, ABC):
     def __str__(self) -> str:
         return f"{type(self).__name__}({id(self)})"
 
@@ -92,14 +89,3 @@ class Graph:
     # TODO: reconsider if we want this duplicate info
     start: frozenset[Node]
     end: frozenset[Node]
-
-    def union(self, other: Graph) -> Graph:
-        return Graph(
-            nodes=self.nodes | other.nodes,
-            edges=(edges := self.edges | other.edges),
-            start=(self.start | other.start) - frozenset(edge.end for edge in edges),
-            end=(self.end | other.end) - frozenset(edge.start for edge in edges),
-        )
-
-    def __or__(self, other: Graph) -> Graph:
-        return self.union(other)

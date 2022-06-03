@@ -27,7 +27,7 @@ class TestProcessMap:
 
 
 class TestProcess:
-    def test_identity_by_value(self) -> None:
+    def test_equality_by_value(self) -> None:
         assert P("Sail", 1) == P("Sail", 1)
 
     def test_to_graph(self) -> None:
@@ -281,10 +281,7 @@ class TestUsing:
             start=fset(ship1, crew1),
             end=fset(crew2, ship2),
         )
-
-        result = sail_ship_with_crew.to_graph()
-
-        assert isomorphic_graph(result, expected)
+        assert isomorphic_graph(sail_ship_with_crew, expected)
 
 
 # def test_process_with_resource() -> None:

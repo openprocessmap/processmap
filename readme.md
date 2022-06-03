@@ -6,7 +6,6 @@ A Python library to represent process and task networks, specifically geared tow
 
 - Using resources
 - Simple runs
-- Merges
 - ChooseMap() using Simulation Variable
 - Visualization
 - Syntactic sugar
