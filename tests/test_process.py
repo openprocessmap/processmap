@@ -5,6 +5,7 @@ from processmap import ProcessEdge as PE
 from processmap import ProcessNode, Release, Request, Seq, Union
 from processmap.common import fset
 from processmap.graph import ReleaseNode, RequestNode
+from processmap.result import Result
 
 from .common import isomorphic_graph
 
@@ -48,6 +49,21 @@ class TestProcess:
             ),
         )
 
+    def test_run_short(self) -> None:
+        sail = P("Sail", 1)
+        expected = {sail: Result(0, 1)}
+        result = sail.run()
+        assert result == expected
+
+    def test_run_long(self) -> None:
+        sail = P("Sail", 100)
+        expected = {sail: Result(0, 100)}
+        result = sail.run()
+        assert result == expected
+
+    def test_processes(self) -> None:
+        assert P("Sail", 1).processes()
+
 
 class TestSeq:
     def test_nested(self) -> None:
@@ -72,6 +88,22 @@ class TestSeq:
             end=fset(c2),
         )
         assert isomorphic_graph(s, expected)
+
+    def test_run(self) -> None:
+        sail_to = P("SailTo", 1)
+        dock = P("Dock", 3)
+        sail_from = P("SailFrom", 5)
+        sequence = sail_to >> dock >> sail_from
+
+        expected = {
+            sail_to: Result(0, 1),
+            dock: Result(1, 4),
+            sail_from: Result(4, 9),
+            sequence: Result(0, 9),
+        }
+
+        result = sequence.run()
+        assert expected.items() <= result.items()
 
 
 class TestUnion:

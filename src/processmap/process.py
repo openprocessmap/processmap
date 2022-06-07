@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Sequence, Callable
+from collections.abc import Mapping, Sequence, Set
 from dataclasses import dataclass
 from functools import reduce
 from itertools import product
 
 from .common import fset
+from .errors import CircularDependencyError
 from .graph import (
     DependencyEdge,
     Graph,
@@ -18,6 +19,7 @@ from .graph import (
 
 __all__ = ["ProcessMap", "Process", "Seq", "Union", "Request", "Release"]
 
+from .result import Result
 
 ObjectId = int
 
@@ -36,6 +38,15 @@ class ProcessMap(ABC):
 
     def to_graph(self) -> Graph:
         return self.to_subgraph(subgraphs={})
+
+    @abstractmethod
+    def run(self) -> Mapping[ProcessMap, Result]:
+        ...
+
+    @property
+    @abstractmethod
+    def processes(self) -> Set[ProcessMap]:
+        ...
 
     def __rshift__(self, other: ProcessMap) -> Seq:
         return Seq(self, other)
@@ -61,6 +72,13 @@ class Process(ProcessMap):
             end=fset(end),
         )
 
+    def run(self) -> Mapping[ProcessMap, Result]:
+        return {self: Result(0, self.duration)}
+
+    @property
+    def processes(self) -> Set[ProcessMap]:
+        return {self}
+
 
 @dataclass(frozen=True)
 class Seq(ProcessMap):
@@ -72,6 +90,14 @@ class Seq(ProcessMap):
     a: ProcessMap
     b: ProcessMap
 
+    def __post_init__(self) -> None:
+        if common_processes := self.a.processes & self.b.processes:
+            raise CircularDependencyError(
+                "Unable to create dependency between two process maps"
+                "that have common processes.\n"
+                "Common processes:\n\n" + "\n".join(map(repr, common_processes))
+            )
+
     def _to_subgraph(self, subgraphs: dict[ObjectId, Graph]) -> Graph:
         graph_a = self.a.to_subgraph(subgraphs)
         graph_b = self.b.to_subgraph(subgraphs)
@@ -82,6 +108,25 @@ class Seq(ProcessMap):
             start=graph_a.start,
             end=graph_b.end,
         )
+
+    def run(self) -> Mapping[ProcessMap, Result]:
+        result_a = self.a.run()
+        result_b = self.b.run()
+
+        end_a = result_a[self.a].end
+
+        return (
+            result_a
+            | {
+                process: Result(result.start + end_a, result.end + end_a)
+                for process, result in result_b.items()
+            }
+            | {self: Result(result_a[self.a].start, result_b[self.b].end + end_a)}
+        )
+
+    @property
+    def processes(self) -> Set[ProcessMap]:
+        return self.a.processes | self.b.processes | {self}
 
 
 @dataclass(frozen=True)
@@ -105,6 +150,9 @@ class Union(ProcessMap):
             end=(graph_a.end | graph_b.end).difference(edge.start for edge in edges),
         )
 
+    def run(self) -> Mapping[ProcessMap, Result]:
+        ...
+
 
 @dataclass(frozen=True)
 class Request(ProcessMap):
@@ -122,6 +170,9 @@ class Request(ProcessMap):
             end=fset(node),
         )
 
+    def run(self) -> Mapping[ProcessMap, Result]:
+        ...
+
 
 @dataclass(frozen=True)
 class Release(ProcessMap):
@@ -138,6 +189,9 @@ class Release(ProcessMap):
             start=fset(node),
             end=fset(node),
         )
+
+    def run(self) -> Mapping[ProcessMap, Result]:
+        ...
 
 
 @dataclass(frozen=True)
@@ -160,11 +214,15 @@ class WithResources(ProcessMap):
         )
         return (all_requests >> self.process >> all_releases).to_subgraph(subgraphs)
 
+    def run(self) -> Mapping[ProcessMap, Result]:
+        ...
+
 
 # @dataclass(frozen=True)
 # class WaitUntil(ProcessMap):
 #     """
-#     A process that only finishes after a specific time on the simulation clock has passed
+#     A process that only finishes after a specific time
+#     on the simulation clock has passed
 #     If it starts after this time it finishes immediately
 #     """
 #
@@ -174,7 +232,8 @@ class WithResources(ProcessMap):
 # @dataclass(frozen=True)
 # class Option(ProcessMap):
 #     """
-#     A process that can be skipped, depending on a condition evaluated at the start of the wrapping process
+#     A process that can be skipped, depending on a condition
+#     evaluated at the start of the wrapping process
 #     """
 #
 #     condition: Callable[[], bool]
