@@ -1,9 +1,12 @@
+import pytest
+
 from processmap import DependencyEdge as DE
 from processmap import Graph
 from processmap import Process as P
 from processmap import ProcessEdge as PE
 from processmap import ProcessNode, Release, Request, Seq, Union
 from processmap.common import fset
+from processmap.errors import CircularDependencyError
 from processmap.graph import ReleaseNode, RequestNode
 from processmap.result import Result
 
@@ -62,7 +65,8 @@ class TestProcess:
         assert result == expected
 
     def test_processes(self) -> None:
-        assert P("Sail", 1).processes()
+        sail = P("Sail", 1)
+        assert sail.processes == {sail}
 
 
 class TestSeq:
@@ -104,6 +108,23 @@ class TestSeq:
 
         result = sequence.run()
         assert expected.items() <= result.items()
+
+    def test_processes(self) -> None:
+        sail_dock = (sail := P("Sail", 1)) >> (dock := P("Dock", 1))
+        assert sail_dock.processes == {sail, dock, sail_dock}
+
+    def test_circle_detection_simple(self) -> None:
+        with pytest.raises(CircularDependencyError):
+            P("Sail", 1) >> P("Sail", 1)
+
+    def test_circle_detection_complex(self) -> None:
+        ship_process = (
+            P("Sail", 1) >> (dock := P("Dock", 1)) >> P("Unload", 1) >> P("Load", 1)
+        )
+        pilot_process = P("Approach", 1) >> dock >> P("Return", 1)
+
+        with pytest.raises(CircularDependencyError):
+            ship_process >> pilot_process
 
 
 class TestUnion:
@@ -276,27 +297,41 @@ class TestUnion:
         assert isomorphic_graph(x | y, expected)
         assert isomorphic_graph(y | x, expected)
 
-
-def test_request() -> None:
-    ship_required = Request(ship := object())
-    expected = Graph(
-        nodes=fset(node := RequestNode(ship)),
-        edges=fset(),
-        start=fset(node),
-        end=fset(node),
-    )
-    assert isomorphic_graph(ship_required, expected)
+    def test_processes(self) -> None:
+        load_fuel = (load := P("Load", 1)) >> (fuel := P("Fuel", 1))
+        assert load_fuel.processes == {load, fuel, load_fuel}
 
 
-def test_release() -> None:
-    ship_released = Release(ship := object())
-    expected = Graph(
-        nodes=fset(node := ReleaseNode(ship)),
-        edges=fset(),
-        start=fset(node),
-        end=fset(node),
-    )
-    assert isomorphic_graph(ship_released, expected)
+class TestRequst:
+    def test_request(self) -> None:
+        ship_required = Request(ship := object())
+        expected = Graph(
+            nodes=fset(node := RequestNode(ship)),
+            edges=fset(),
+            start=fset(node),
+            end=fset(node),
+        )
+        assert isomorphic_graph(ship_required, expected)
+
+    def test_processes(self) -> None:
+        request = Request(object())
+        assert request.processes == {request}
+
+
+class TestRelease:
+    def test_release(self) -> None:
+        ship_released = Release(ship := object())
+        expected = Graph(
+            nodes=fset(node := ReleaseNode(ship)),
+            edges=fset(),
+            start=fset(node),
+            end=fset(node),
+        )
+        assert isomorphic_graph(ship_released, expected)
+
+    def test_processes(self) -> None:
+        release = Release(object())
+        assert release.processes == {release}
 
 
 class TestUsing:
@@ -341,6 +376,10 @@ class TestUsing:
             end=fset(ship2),
         )
         assert isomorphic_graph(sail_ship, expected)
+
+    def test_processes(self) -> None:
+        sail_ship = (sail := P("Sail", 1)).using(object())
+        assert sail_ship.processes == {sail, sail_ship}
 
 
 # def test_process_with_resource() -> None:

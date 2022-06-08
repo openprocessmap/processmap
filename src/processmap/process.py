@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Mapping, Sequence, Set
+from collections.abc import Mapping, Set
 from dataclasses import dataclass
 from functools import reduce
 from itertools import product
@@ -56,7 +56,7 @@ class ProcessMap(ABC):
         return Union(self, other)
 
     def using(self, resource: object, *additional_resources: object) -> ProcessMap:
-        return WithResources(self, [resource, *additional_resources])
+        return WithResources(self, (resource, *additional_resources))
 
 
 @dataclass(frozen=True)
@@ -153,6 +153,10 @@ class Union(ProcessMap):
     def run(self) -> Mapping[ProcessMap, Result]:
         ...
 
+    @property
+    def processes(self) -> Set[ProcessMap]:
+        return self.a.processes | self.b.processes | {self}
+
 
 @dataclass(frozen=True)
 class Request(ProcessMap):
@@ -172,6 +176,10 @@ class Request(ProcessMap):
 
     def run(self) -> Mapping[ProcessMap, Result]:
         ...
+
+    @property
+    def processes(self) -> Set[ProcessMap]:
+        return {self}
 
 
 @dataclass(frozen=True)
@@ -193,6 +201,10 @@ class Release(ProcessMap):
     def run(self) -> Mapping[ProcessMap, Result]:
         ...
 
+    @property
+    def processes(self) -> Set[ProcessMap]:
+        return {self}
+
 
 @dataclass(frozen=True)
 class WithResources(ProcessMap):
@@ -201,7 +213,7 @@ class WithResources(ProcessMap):
     """
 
     process: ProcessMap
-    resources: Sequence[object]  # at least one
+    resources: tuple[object, ...]  # at least one
 
     def __post_init__(self) -> None:
         assert len(self.resources) > 0
@@ -216,6 +228,10 @@ class WithResources(ProcessMap):
 
     def run(self) -> Mapping[ProcessMap, Result]:
         ...
+
+    @property
+    def processes(self) -> Set[ProcessMap]:
+        return self.process.processes | {self}
 
 
 # @dataclass(frozen=True)
